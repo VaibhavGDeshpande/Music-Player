@@ -26,6 +26,7 @@ export default function DashboardPage() {
           <div
             key={playlist.id}
             className="bg-neutral-900 p-4 rounded-md hover:bg-neutral-800 transition cursor-pointer group"
+            onClick={() => window.location.href = `/dashboard/playlists/${playlist.id}`}
           >
             <div className="relative mb-4">
               <img
