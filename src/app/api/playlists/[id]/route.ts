@@ -38,6 +38,12 @@ export async function GET(
   }
 
   const data = await response.json();
-  console.log(`Fetched playlist ${id} successfully with ${data.tracks?.total} tracks`);
+  console.log(`Fetched playlist ${id} successfully. Total tracks: ${data.tracks?.total}`);
+  // Log the first track to check structure if it exists
+  if (data.tracks?.items?.length > 0) {
+    console.log("First track sample:", JSON.stringify(data.tracks.items[0], null, 2));
+  } else {
+    console.log("Track items are empty or missing:", JSON.stringify(data.tracks, null, 2));
+  }
   return NextResponse.json(data);
 }

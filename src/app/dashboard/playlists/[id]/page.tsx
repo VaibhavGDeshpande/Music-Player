@@ -36,7 +36,7 @@ export default function PlaylistDetailsPage({
   const handleDownload = async (track: any) => {
     setShowOptions(null);
     const toastId = `download-${track.id}`;
-    // Simple alert for now, real toast would be better
+
     const startMsg = document.createElement("div");
     startMsg.innerText = `Downloading ${track.name}...`;
     startMsg.className = "fixed bottom-5 right-5 bg-blue-600 text-white p-4 rounded-md z-50 animate-bounce";
