@@ -127,7 +127,7 @@ export default function PlaylistDetailsPage({
   };
 
   return (
-    <div className="text-white relative">
+    <div className="text-white relative md:ml-64 pb-32">
       <div className="flex items-end gap-6 mb-8">
         <img
           src={playlist.images?.[0]?.url || "/placeholder.png"}

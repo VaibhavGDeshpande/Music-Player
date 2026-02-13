@@ -17,7 +17,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="text-white">
+    <div className="text-white md:ml-64 pb-32">
       <h1 className="text-3xl font-bold mb-6">Welcome Back</h1>
       
       <h2 className="text-2xl font-bold mb-4">Your Playlists</h2>

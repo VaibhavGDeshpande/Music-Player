@@ -9,40 +9,57 @@ export default function Sidebar() {
   const links = [
     { href: "/dashboard", label: "Home", icon: "🏠" },
     { href: "/dashboard/search", label: "Search", icon: "🔍" },
-    { href: "/dashboard/library", label: "Your Library", icon: "📚" },
-    { href: "/dashboard/my-songs", label: "My Songs", icon: "🎵" }, // Added My Songs link
+    { href: "/dashboard/library", label: "Library", icon: "📚" },
+    { href: "/dashboard/my-songs", label: "My Songs", icon: "🎵" },
   ];
 
   return (
-    <div className="w-64 bg-black h-screen flex flex-col p-6 text-neutral-400">
-      <div className="text-white text-2xl font-bold mb-8 px-2">MusicPlayer</div>
-      <nav className="flex-1 space-y-4">
+    <>
+      {/* DESKTOP SIDEBAR */}
+      <div className="hidden md:flex w-64 bg-black h-screen flex-col p-6 text-neutral-400 fixed left-0 top-0">
+        <div className="text-white text-2xl font-bold mb-8 px-2">
+          MusicPlayer
+        </div>
+
+        <nav className="flex-1 space-y-4">
+          {links.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`flex items-center gap-4 px-2 py-2 rounded-md transition ${
+                  isActive
+                    ? "bg-neutral-800 text-white font-semibold"
+                    : "hover:bg-neutral-800 hover:text-white"
+                }`}
+              >
+                <span className="text-xl">{link.icon}</span>
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* MOBILE BOTTOM NAV (Spotify style) */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-black border-t border-neutral-800 flex justify-around py-3 z-50">
         {links.map((link) => {
           const isActive = pathname === link.href;
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`flex items-center gap-4 px-2 py-2 transition ${
-                isActive ? "text-white font-bold" : "hover:text-white"
+              className={`flex flex-col items-center text-xs ${
+                isActive ? "text-white" : "text-neutral-400"
               }`}
             >
-              <span className="text-2xl">{link.icon}</span>
-              <span>{link.label}</span>
+              <span className="text-lg">{link.icon}</span>
+              {link.label}
             </Link>
           );
         })}
-      </nav>
-      <div className="border-t border-neutral-800 pt-4 mt-auto">
-        <div className="px-2 py-2 hover:text-white cursor-pointer flex items-center gap-4">
-          <span className="bg-white text-black p-1 rounded-sm">➕</span>
-          <span>Create Playlist</span>
-        </div>
-        <div className="px-2 py-2 hover:text-white cursor-pointer flex items-center gap-4">
-          <span className="bg-gradient-to-br from-indigo-700 to-green-300 p-1 rounded-sm text-white">❤️</span>
-          <span>Liked Songs</span>
-        </div>
       </div>
-    </div>
+    </>
   );
 }
