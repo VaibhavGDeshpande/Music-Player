@@ -33,6 +33,80 @@ export default function PlaylistDetailsPage({
   if (!playlist) return <div className="text-white p-10">Loading...</div>;
   if (playlist.error) return <div className="text-red-500 p-10">Error: {JSON.stringify(playlist.error)}</div>;
 
+  const handleDownload = async (track: any) => {
+    setShowOptions(null);
+    const toastId = `download-${track.id}`;
+    // Simple alert for now, real toast would be better
+    const startMsg = document.createElement("div");
+    startMsg.innerText = `Downloading ${track.name}...`;
+    startMsg.className = "fixed bottom-5 right-5 bg-blue-600 text-white p-4 rounded-md z-50 animate-bounce";
+    startMsg.id = toastId;
+    document.body.appendChild(startMsg);
+
+    try {
+      const res = await fetch("/api/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trackId: track.id,
+          spotifyUrl: track.external_urls?.spotify || `https://open.spotify.com/track/${track.id}`,
+        }),
+      });
+
+      const data = await res.json();
+      document.body.removeChild(startMsg);
+
+      if (data.success || data.message === "Song already downloaded") {
+        const successMsg = document.createElement("div");
+        successMsg.innerText = `Downloaded ${track.name}!`;
+        successMsg.className = "fixed bottom-5 right-5 bg-green-600 text-white p-4 rounded-md z-50";
+        document.body.appendChild(successMsg);
+        setTimeout(() => document.body.removeChild(successMsg), 3000);
+      } else {
+        alert("Download failed: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      document.body.removeChild(startMsg);
+      alert("Error downloading song");
+      console.error(err);
+    }
+  };
+
+  const handlePlayDownload = (track: any) => {
+    // Construct the Supabase Public URL
+    // NOTE: In a real app, we should check if it exists in DB first to get the real path.
+    // For this demo, we assume the standard path format: user_id/spotify_id.mp3
+    // But the frontend doesn't know the USER ID easily without a fetch.
+    // So we'll try to Play, but we might need the URL from the download response or a lookup.
+    
+    // Actually, let's just trigger the download endpoint to get the metadata (it returns existing if found)
+    // then play it.
+    
+    fetch("/api/download", {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({ trackId: track.id }),
+    })
+    .then(res => res.json())
+    .then(data => {
+       if (data.song) {
+          const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
+          const event = new CustomEvent("play_track", {
+            detail: {
+              url: publicUrl,
+              title: track.name,
+              artist: track.artists.map((a: any) => a.name).join(", "),
+              cover: track.album.images[0]?.url,
+            },
+          });
+          window.dispatchEvent(event);
+       } else {
+         alert("Please download this song first!");
+       }
+    })
+    .catch(err => console.error("Play error", err));
+  };
+
   return (
     <div className="text-white relative">
       <div className="flex items-end gap-6 mb-8">
@@ -61,7 +135,7 @@ export default function PlaylistDetailsPage({
               <th className="pb-3">Title</th>
               <th className="pb-3">Album</th>
               <th className="pb-3 text-right">Duration</th>
-              <th className="pb-3 w-12"></th>
+              <th className="pb-3 w-12 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -100,32 +174,22 @@ export default function PlaylistDetailsPage({
                       .padStart(2, "0")}
                   </td>
                   <td className="py-3 px-2 rounded-r-md text-right relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowOptions(showOptions === track.id ? null : track.id);
-                      }}
-                      className="text-white hover:text-green-500 font-bold"
-                    >
-                      ⋮
-                    </button>
-                    
-                    {showOptions === track.id && (
-                      <div className="absolute right-0 top-10 bg-neutral-800 rounded-md shadow-xl z-50 w-48 py-2 border border-neutral-700">
+                     <div className="flex items-center justify-end gap-2">
                         <button
-                          className="w-full text-left px-4 py-2 hover:bg-neutral-700 text-white flex items-center gap-2"
-                          onClick={() => alert(`Downloading "${track.name}" to device...`)}
+                          className="p-2 hover:text-green-400"
+                          title="Play (if downloaded)"
+                          onClick={() => handlePlayDownload(track)}
                         >
-                          <span>⬇️</span> Download for Device
+                          ▶
                         </button>
                         <button
-                          className="w-full text-left px-4 py-2 hover:bg-neutral-700 text-white flex items-center gap-2"
-                          onClick={() => alert(`Saving "${track.name}" to cloud...`)}
+                          className="p-2 hover:text-blue-400"
+                          title="Download"
+                          onClick={() => handleDownload(track)}
                         >
-                          <span>☁️</span> Save in Cloud
+                          ⬇
                         </button>
-                      </div>
-                    )}
+                     </div>
                   </td>
                 </tr>
               );
@@ -133,14 +197,6 @@ export default function PlaylistDetailsPage({
           </tbody>
         </table>
       </div>
-      
-      {/* Click outside to close options */}
-      {showOptions && (
-        <div 
-          className="fixed inset-0 z-40" 
-          onClick={() => setShowOptions(null)}
-        />
-      )}
     </div>
   );
 }
