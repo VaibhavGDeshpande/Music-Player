@@ -10,6 +10,7 @@ export default function Sidebar() {
     { href: "/dashboard", label: "Home", icon: "🏠" },
     { href: "/dashboard/search", label: "Search", icon: "🔍" },
     { href: "/dashboard/library", label: "Your Library", icon: "📚" },
+    { href: "/dashboard/my-songs", label: "My Songs", icon: "🎵" }, // Added My Songs link
   ];
 
   return (
