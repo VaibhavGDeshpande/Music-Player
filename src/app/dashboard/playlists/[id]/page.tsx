@@ -16,10 +16,22 @@ export default function PlaylistDetailsPage({
   useEffect(() => {
     fetch(`/api/playlists/${id}`)
       .then((res) => res.json())
-      .then((data) => setPlaylist(data));
+      .then((data) => {
+        if (data.error) {
+          console.error("Failed to load playlist:", data.error);
+          setPlaylist({ error: data.error });
+        } else {
+          setPlaylist(data);
+        }
+      })
+      .catch(err => {
+        console.error("Network error:", err);
+        setPlaylist({ error: "Failed to connect to server" });
+      });
   }, [id]);
 
   if (!playlist) return <div className="text-white p-10">Loading...</div>;
+  if (playlist.error) return <div className="text-red-500 p-10">Error: {JSON.stringify(playlist.error)}</div>;
 
   return (
     <div className="text-white relative">

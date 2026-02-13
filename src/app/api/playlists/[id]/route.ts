@@ -32,8 +32,12 @@ export async function GET(
   });
 
   if (!response.ok) {
-    return NextResponse.json(await response.json(), { status: response.status });
+    const errorBody = await response.json();
+    console.error(`Error fetching playlist ${id}: ${response.status}`, errorBody);
+    return NextResponse.json(errorBody, { status: response.status });
   }
 
-  return NextResponse.json(await response.json());
+  const data = await response.json();
+  console.log(`Fetched playlist ${id} successfully with ${data.tracks?.total} tracks`);
+  return NextResponse.json(data);
 }
