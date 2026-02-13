@@ -37,10 +37,19 @@ export async function GET(request: NextRequest) {
     }
   );
 
+  if (!tokenRes.ok) {
+    const errorData = await tokenRes.json();
+    console.error("Token exchange failed:", errorData);
+    return NextResponse.json(
+      { error: "Failed to exchange code for token", details: errorData },
+      { status: tokenRes.status }
+    );
+  }
+
   const tokenData =
     (await tokenRes.json()) as SpotifyTokenResponse;
 
-  // Fetch profile
+
   const profileRes = await fetch(
     "https://api.spotify.com/v1/me",
     {
@@ -50,8 +59,25 @@ export async function GET(request: NextRequest) {
     }
   );
 
+  if (!profileRes.ok) {
+    const errorData = await profileRes.json();
+    console.error("Profile fetch failed:", errorData);
+    return NextResponse.json(
+      { error: "Failed to fetch Spotify profile", details: errorData },
+      { status: profileRes.status }
+    );
+  }
+
   const profile =
     (await profileRes.json()) as SpotifyProfile;
+
+  if (!profile.id) {
+    console.error("Profile missing ID:", profile);
+    return NextResponse.json(
+      { error: "Spotify profile missing ID" },
+      { status: 500 }
+    );
+  }
 
   const expiresAt = new Date(
     Date.now() + tokenData.expires_in * 1000
@@ -75,6 +101,7 @@ export async function GET(request: NextRequest) {
     .single();
 
   if (error) {
+    console.error("Supabase upsert error:", error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
