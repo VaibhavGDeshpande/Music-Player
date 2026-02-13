@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePlayer } from "@/contexts/PlayerContext";
 
 export default function LikedSongsPage() {
   const [tracks, setTracks] = useState<any[]>([]);
@@ -15,6 +16,8 @@ export default function LikedSongsPage() {
       })
       .catch(err => console.error("Liked songs fetch error:", err));
   }, []);
+
+  const { playTrack } = usePlayer();
 
   const handleDownload = async (track: any) => {
     const toastId = `download-${track.id}`;
@@ -63,15 +66,14 @@ export default function LikedSongsPage() {
     .then(data => {
        if (data.song) {
           const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-          const event = new CustomEvent("play_track", {
-            detail: {
-              url: publicUrl,
-              title: track.name,
-              artist: track.artists.map((a: any) => a.name).join(", "),
-              cover: track.album.images[0]?.url,
-            },
+          playTrack({
+            id: track.id,
+            title: track.name,
+            artist: track.artists.map((a: any) => a.name).join(", "),
+            cover: track.album.images[0]?.url,
+            url: publicUrl,
+            duration: track.duration_ms / 1000,
           });
-          window.dispatchEvent(event);
        } else {
          alert("Please download this song first!");
        }

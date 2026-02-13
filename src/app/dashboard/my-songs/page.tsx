@@ -24,17 +24,24 @@ export default function MySongsPage() {
   }, []);
 
   const handlePlay = (song: any) => {
-    const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${song.storage_path}`;
-    
-    const event = new CustomEvent("play_track", {
-      detail: {
-        url: publicUrl,
-        title: song.title,
-        artist: song.artist,
-        cover: song.cover_url,
-      },
+    const formatTrack = (s: any) => ({
+      title: s.title,
+      artist: s.artist,
+      cover: s.cover_url || "/placeholder.png",
+      url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${s.storage_path}`,
     });
-    window.dispatchEvent(event);
+
+    const queue = songs.map(formatTrack);
+    const track = formatTrack(song);
+
+    window.dispatchEvent(
+      new CustomEvent("play_track", {
+        detail: {
+          track,
+          queue,
+        },
+      })
+    );
   };
 
   if (loading) return <div className="text-white p-10">Loading your library...</div>;

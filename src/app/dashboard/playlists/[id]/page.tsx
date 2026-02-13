@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
+import SongRow from "@/components/SongRow";
 
 export default function PlaylistDetailsPage({
   params,
@@ -95,15 +96,29 @@ export default function PlaylistDetailsPage({
     .then(data => {
        if (data.song) {
           const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-          const event = new CustomEvent("play_track", {
-            detail: {
-              url: publicUrl,
-              title: track.name,
-              artist: track.artists.map((a: any) => a.name).join(", "),
-              cover: track.album.images[0]?.url,
-            },
-          });
-          window.dispatchEvent(event);
+          const trackWithUrl = {
+            ...track,
+            url: publicUrl,
+            artist: track.artists.map((a: any) => a.name).join(", "),
+            cover: track.album.images[0]?.url,
+            title: track.name,
+          };
+
+          const queue = (playlist?.tracks?.items || []).map((item: any) => ({
+            ...item.track,
+            artist: item.track.artists.map((a: any) => a.name).join(", "),
+            cover: item.track.album.images[0]?.url,
+            title: item.track.name,
+          }));
+
+          window.dispatchEvent(
+            new CustomEvent("play_track", {
+              detail: {
+                track: trackWithUrl,
+                queue: queue,
+              },
+            })
+          );
        } else {
          alert("Please download this song first!");
        }
@@ -148,54 +163,12 @@ export default function PlaylistDetailsPage({
               if (!track) return null;
 
               return (
-                <tr
-                  key={track.id + index}
-                  className="hover:bg-white/10 transition group rounded-md relative"
-                >
-                  <td className="py-3 px-2 rounded-l-md text-center">
-                    {index + 1}
-                  </td>
-                  <td className="py-3">
-                    <div className="flex items-center gap-4">
-                      <img
-                        src={track.album.images[2]?.url}
-                        alt={track.name}
-                        className="w-10 h-10 rounded-sm"
-                      />
-                      <div>
-                        <p className="text-white font-semibold">{track.name}</p>
-                        <p className="text-sm">
-                          {track.artists.map((a: any) => a.name).join(", ")}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3">{track.album.name}</td>
-                  <td className="py-3 text-right">
-                    {Math.floor(track.duration_ms / 60000)}:
-                    {((track.duration_ms % 60000) / 1000)
-                      .toFixed(0)
-                      .padStart(2, "0")}
-                  </td>
-                  <td className="py-3 px-2 rounded-r-md text-right relative">
-                     <div className="flex items-center justify-end gap-2">
-                        <button
-                          className="p-2 hover:text-green-400"
-                          title="Play (if downloaded)"
-                          onClick={() => handlePlayDownload(track)}
-                        >
-                          ▶
-                        </button>
-                        <button
-                          className="p-2 hover:text-blue-400"
-                          title="Download"
-                          onClick={() => handleDownload(track)}
-                        >
-                          ⬇
-                        </button>
-                     </div>
-                  </td>
-                </tr>
+                <SongRow 
+                    key={track.id + index} 
+                    track={track} 
+                    index={index} 
+                    onDownload={handleDownload} 
+                />
               );
             })}
           </tbody>
