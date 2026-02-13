@@ -9,7 +9,7 @@ export default function Sidebar() {
   const links = [
     { href: "/dashboard", label: "Home", icon: "🏠" },
     { href: "/dashboard/search", label: "Search", icon: "🔍" },
-    { href: "/dashboard/library", label: "Library", icon: "📚" },
+    { href: "/dashboard/library", label: "Liked Songs", icon: "❤️" },
     { href: "/dashboard/my-songs", label: "My Songs", icon: "🎵" },
   ];
 
