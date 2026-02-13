@@ -34,9 +34,9 @@ export default function PlaylistDetailsPage({
           <h1 className="text-5xl md:text-7xl font-bold mb-4">{playlist.name}</h1>
           <p className="text-neutral-400">{playlist.description}</p>
           <div className="mt-2 flex items-center gap-1 text-sm font-semibold">
-            <span>{playlist.owner.display_name}</span>
+            <span>{playlist.owner?.display_name || "Unknown"}</span>
             <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-            <span>{playlist.tracks.total} songs</span>
+            <span>{playlist.tracks?.total || 0} songs</span>
           </div>
         </div>
       </div>
@@ -53,7 +53,7 @@ export default function PlaylistDetailsPage({
             </tr>
           </thead>
           <tbody>
-            {playlist.tracks.items.map((item: any, index: number) => {
+            {(playlist.tracks?.items || []).map((item: any, index: number) => {
               const track = item.track;
               if (!track) return null;
 
