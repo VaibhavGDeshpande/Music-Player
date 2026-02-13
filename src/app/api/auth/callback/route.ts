@@ -83,20 +83,23 @@ export async function GET(request: NextRequest) {
     Date.now() + tokenData.expires_in * 1000
   );
 
-  // Upsert into Supabase
+  
   const { data, error } = await supabase
     .from("profiles")
-    .upsert({
-      spotify_user_id: profile.id,
-      display_name: profile.display_name,
-      email: profile.email,
-      profile_image_url: profile.images?.[0]?.url,
-      country: profile.country,
-      product_type: profile.product,
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
-      token_expires_at: expiresAt,
-    })
+    .upsert(
+      {
+        spotify_user_id: profile.id,
+        display_name: profile.display_name,
+        email: profile.email,
+        profile_image_url: profile.images?.[0]?.url,
+        country: profile.country,
+        product_type: profile.product,
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        token_expires_at: expiresAt,
+      },
+      { onConflict: "spotify_user_id" }
+    )
     .select()
     .single();
 
