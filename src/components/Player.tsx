@@ -7,7 +7,7 @@ export default function Player() {
   const [currentTrack, setCurrentTrack] = useState<any>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Listen for "play_track" event from other components
+
   useEffect(() => {
     const handlePlayTrack = (event: CustomEvent) => {
       const track = event.detail;

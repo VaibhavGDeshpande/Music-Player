@@ -29,6 +29,10 @@ export default function PlaylistDetailsPage({
         setPlaylist({ error: "Failed to connect to server" });
       });
   }, [id]);
+  
+  console.log("Render State - Playlist:", playlist);
+  console.log("Render State - Tracks:", playlist?.tracks);
+  console.log("Render State - Items:", playlist?.tracks?.items);
 
   if (!playlist) return <div className="text-white p-10">Loading...</div>;
   if (playlist.error) return <div className="text-red-500 p-10">Error: {JSON.stringify(playlist.error)}</div>;
