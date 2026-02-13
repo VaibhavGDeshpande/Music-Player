@@ -69,9 +69,12 @@ export async function POST(request: NextRequest) {
     console.log("Downloading MP3 from:", downloadLink);
     const mp3Res = await fetch(downloadLink);
     if (!mp3Res.ok) {
-      console.error("MP3 Fetch Error:", mp3Res.status);
+      console.error("MP3 Fetch Error Status:", mp3Res.status);
+      console.error("MP3 Fetch Error Text:", await mp3Res.text());
       return NextResponse.json({ error: "Failed to download MP3 file" }, { status: 502 });
     }
+    console.log("MP3 Content-Type:", mp3Res.headers.get("content-type"));
+    console.log("MP3 Content-Length:", mp3Res.headers.get("content-length"));
 
     const mp3Buffer = await mp3Res.arrayBuffer();
 

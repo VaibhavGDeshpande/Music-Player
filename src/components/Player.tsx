@@ -75,7 +75,14 @@ export default function Player() {
       <audio
         ref={audioRef}
         onEnded={() => setIsPlaying(false)}
-        onError={(e) => console.error("Audio playback error", e)}
+        onError={(e) => {
+          console.error("Audio playback error event:", e);
+          const audio = e.currentTarget;
+          if (audio.error) {
+            console.error("Audio Error Code:", audio.error.code);
+            console.error("Audio Error Message:", audio.error.message);
+          }
+        }}
       />
     </div>
   );
