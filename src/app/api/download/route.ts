@@ -42,8 +42,10 @@ export async function POST(request: NextRequest) {
       {
         method: "GET",
         headers: {
-          "x-rapidapi-key": process.env.SPOTIFY_DOWNLOADER_KEY!,
+          "X-RapidAPI-Key": process.env.SPOTIFY_DOWNLOADER_KEY!,
           "x-rapidapi-host": "spotify-downloader9.p.rapidapi.com",
+          "x-api-host": "spotify-downloader9.p.rapidapi.com", 
+          "Content-Type": "application/json",
         },
       }
     );
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     const { title, artist, album, cover, downloadLink } = rapidApiData.data;
 
-    // 3. Download the actual MP3 file
+ 
     console.log("Downloading MP3 from:", downloadLink);
     const mp3Res = await fetch(downloadLink);
     if (!mp3Res.ok) {
