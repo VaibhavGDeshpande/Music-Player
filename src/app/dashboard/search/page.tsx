@@ -16,7 +16,7 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="text-white md:ml-64 pb-32">
+    <div className="text-white">
       <form onSubmit={handleSearch} className="mb-8">
         <input
           type="text"

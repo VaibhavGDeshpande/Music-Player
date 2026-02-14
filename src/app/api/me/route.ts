@@ -1,3 +1,4 @@
+import { getAccessToken } from "@/lib/spotify";
 import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
@@ -16,6 +17,9 @@ export async function GET(request: NextRequest) {
     token,
     process.env.JWT_SECRET!
   ) as { userId: string };
+
+  // Ensure fresh token
+  const accessToken = await getAccessToken(decoded.userId);
 
   const { data, error } = await supabase
     .from("profiles")
