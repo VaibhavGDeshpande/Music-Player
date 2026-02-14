@@ -5,6 +5,8 @@ import { usePlayer } from "@/contexts/PlayerContext";
 
 export default function LikedSongsPage() {
   const [tracks, setTracks] = useState<any[]>([]);
+  const { playTrack, downloadedSongs, refreshLibrary } = usePlayer();
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/liked-songs")
@@ -17,15 +19,18 @@ export default function LikedSongsPage() {
       .catch(err => console.error("Liked songs fetch error:", err));
   }, []);
 
-  const { playTrack } = usePlayer();
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const handleDownload = async (track: any) => {
-    const toastId = `download-${track.id}`;
-    const startMsg = document.createElement("div");
-    startMsg.innerText = `Downloading ${track.name}...`;
-    startMsg.className = "fixed bottom-5 right-5 bg-blue-600 text-white p-4 rounded-md z-50 animate-bounce";
-    startMsg.id = toastId;
-    document.body.appendChild(startMsg);
+    if (downloadedSongs.has(track.id)) return;
+    
+    setDownloadingId(track.id);
+    showToast(`Downloading "${track.name}"...`, "info");
 
     try {
       const res = await fetch("/api/download", {
@@ -38,54 +43,68 @@ export default function LikedSongsPage() {
       });
 
       const data = await res.json();
-      document.body.removeChild(startMsg);
 
       if (data.success || data.message === "Song already downloaded") {
-        const successMsg = document.createElement("div");
-        successMsg.innerText = `Downloaded ${track.name}!`;
-        successMsg.className = "fixed bottom-5 right-5 bg-green-600 text-white p-4 rounded-md z-50";
-        document.body.appendChild(successMsg);
-        setTimeout(() => document.body.removeChild(successMsg), 3000);
+        refreshLibrary();
+        showToast(`Saved "${track.name}" to Cloud!`, "success");
       } else {
-        alert("Download failed: " + (data.error || "Unknown error"));
+        const err = data.error || "Unknown error";
+        showToast(`Download failed: ${err}`, "error");
       }
     } catch (err) {
-      document.body.removeChild(startMsg);
-      alert("Error downloading song");
+      showToast("Error downloading song", "error");
       console.error(err);
+    } finally {
+        setDownloadingId(null);
     }
   };
 
   const handlePlayDownload = (track: any) => {
-    fetch("/api/download", {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ trackId: track.id }),
-    })
-    .then(res => res.json())
-    .then(data => {
-       if (data.song) {
-          const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-          playTrack({
+    // If downloaded, playing generic way (via API or constructed URL if we cached it).
+    // The previous code fetched /api/download just to get the path. 
+    // We can do that or play preview if not downloaded.
+    
+    if (downloadedSongs.has(track.id)) {
+        // Fetch DB data to get path, or rely on naming convention if we want to be risky? 
+        // Safer to fetch metadata.
+        fetch("/api/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackId: track.id }),
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.song) {
+                const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
+                playTrack({
+                    id: track.id,
+                    title: track.name,
+                    artist: track.artists.map((a: any) => a.name).join(", "),
+                    cover: track.album.images[0]?.url,
+                    url: publicUrl,
+                    duration: track.duration_ms / 1000,
+                });
+            }
+        });
+    } else if (track.preview_url) {
+        playTrack({
             id: track.id,
             title: track.name,
             artist: track.artists.map((a: any) => a.name).join(", "),
             cover: track.album.images[0]?.url,
-            url: publicUrl,
-            duration: track.duration_ms / 1000,
-          });
-       } else {
-         alert("Please download this song first!");
-       }
-    })
-    .catch(err => console.error("Play error", err));
+            url: track.preview_url,
+            duration: 30, // Preview is 30s
+        });
+    } else {
+         alert("No preview available. Please Save to Cloud!");
+    }
   };
 
-return (
+  return (
   <div className="text-white px-4 md:px-8 pb-32">
 
     {/* HEADER */}
-    <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-10 text-center md:text-left">
+    <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-10 text-center md:text-left pt-6">
       <div className="w-40 h-40 md:w-52 md:h-52 bg-gradient-to-br from-indigo-700 to-green-300 flex items-center justify-center shadow-2xl rounded-md">
         <span className="text-5xl md:text-6xl">❤️</span>
       </div>
@@ -116,7 +135,11 @@ return (
           </tr>
         </thead>
         <tbody>
-          {tracks.map((track, index) => (
+          {tracks.map((track, index) => {
+            const isDownloaded = downloadedSongs.has(track.id);
+            const isSaving = downloadingId === track.id;
+            
+            return (
             <tr
               key={track.id}
               className="hover:bg-white/10 transition group"
@@ -152,30 +175,43 @@ return (
               </td>
 
               <td className="py-3 text-right">
-                <div className="flex justify-end gap-3">
+                <div className="flex justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
                   <button
                     onClick={() => handlePlayDownload(track)}
-                    className="hover:text-green-400"
+                    className="w-8 h-8 flex items-center justify-center rounded-full bg-green-500 text-black hover:scale-105"
+                    title={isDownloaded ? "Play" : "Play Preview"}
                   >
                     ▶
                   </button>
-                  <button
-                    onClick={() => handleDownload(track)}
-                    className="hover:text-blue-400"
-                  >
-                    ⬇
-                  </button>
+                  
+                  {!isDownloaded && (
+                      <button
+                        onClick={() => handleDownload(track)}
+                        disabled={isSaving}
+                        className={`w-8 h-8 flex items-center justify-center rounded-full border border-neutral-400 hover:border-white hover:bg-white/10 ${isSaving ? "animate-pulse" : ""}`}
+                        title="Save to Cloud"
+                      >
+                       {isSaving ? "..." : "⬇"}
+                      </button>
+                  )}
+                  
+                  {isDownloaded && <span className="text-green-500 text-xl self-center">✔</span>}
                 </div>
               </td>
             </tr>
-          ))}
+          );
+          })}
         </tbody>
       </table>
     </div>
 
     {/* MOBILE CARD LIST */}
     <div className="md:hidden space-y-3">
-      {tracks.map((track) => (
+      {tracks.map((track) => {
+         const isDownloaded = downloadedSongs.has(track.id);
+         const isSaving = downloadingId === track.id;
+
+         return (
         <div
           key={track.id}
           className="flex items-center justify-between bg-black/30 p-3 rounded-md"
@@ -195,23 +231,40 @@ return (
             </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 items-center">
             <button
               onClick={() => handlePlayDownload(track)}
-              className="text-green-400 text-lg"
+              className="text-green-400 text-2xl"
             >
               ▶
             </button>
-            <button
-              onClick={() => handleDownload(track)}
-              className="text-blue-400 text-lg"
-            >
-              ⬇
-            </button>
+            
+            {!isDownloaded && (
+                <button
+                  onClick={() => handleDownload(track)}
+                  disabled={isSaving}
+                  className="text-blue-400 text-2xl"
+                >
+                  {isSaving ? "..." : "⬇"}
+                </button>
+            )}
+            
+            {isDownloaded && <span className="text-green-500">✔</span>}
           </div>
         </div>
-      ))}
+      );
+      })}
     </div>
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed bottom-5 right-5 px-6 py-3 rounded-md shadow-lg text-white font-medium transition-all transform translate-y-0 opacity-100 z-50 ${
+            toast.type === "success" ? "bg-green-600" : toast.type === "error" ? "bg-red-600" : "bg-blue-600"
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
   </div>
 );
 }
