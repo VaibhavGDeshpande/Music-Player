@@ -1,141 +1,69 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-
-interface Track {
-  title: string;
-  artist: string;
-  cover: string;
-  url: string;
-}
+import { usePlayer } from "@/contexts/PlayerContext";
 
 export default function Player() {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTrack, setCurrentTrack] = useState<Track | null>(null);
-  const [queue, setQueue] = useState<Track[]>([]);
-  const [currentIndex, setCurrentIndex] = useState<number>(-1);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const { 
+    currentTrack, 
+    isPlaying, 
+    togglePlay, 
+    nextTrack, 
+    prevTrack, 
+    currentTime, 
+    duration, 
+    seek 
+  } = usePlayer();
 
-  const audioRef = useRef<HTMLAudioElement>(null);
-
-  useEffect(() => {
-    const handlePlayTrack = async (event: any) => {
-      const track: Track = event.detail.track || event.detail;
-      const newQueue: Track[] = event.detail.queue || [track];
-
-      if (!track) return;
-
-      const index = newQueue.findIndex((t) => t.url === track.url);
-
-      setQueue(newQueue);
-      setCurrentIndex(index !== -1 ? index : 0);
-      setCurrentTrack(track);
-
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current.src = track.url;
-        await audioRef.current.play();
-        setIsPlaying(true);
-      }
-    };
-
-    window.addEventListener("play_track", handlePlayTrack as EventListener);
-    return () =>
-      window.removeEventListener("play_track", handlePlayTrack as EventListener);
-  }, []);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const updateTime = () => setCurrentTime(audio.currentTime);
-    const setMeta = () => setDuration(audio.duration);
-
-    audio.addEventListener("timeupdate", updateTime);
-    audio.addEventListener("loadedmetadata", setMeta);
-
-    return () => {
-      audio.removeEventListener("timeupdate", updateTime);
-      audio.removeEventListener("loadedmetadata", setMeta);
-    };
-  }, []);
-
-  const togglePlay = async () => {
-    if (!audioRef.current) return;
-    isPlaying ? audioRef.current.pause() : await audioRef.current.play();
-    setIsPlaying(!isPlaying);
-  };
-
-  const nextTrack = () => {
-    if (currentIndex + 1 < queue.length) {
-      const next = queue[currentIndex + 1];
-      setCurrentIndex(currentIndex + 1);
-      setCurrentTrack(next);
-      audioRef.current!.src = next.url;
-      audioRef.current!.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const prevTrack = () => {
-    if (!audioRef.current) return;
-    if (audioRef.current.currentTime > 3) {
-      audioRef.current.currentTime = 0;
-      return;
-    }
-    if (currentIndex - 1 >= 0) {
-      const prev = queue[currentIndex - 1];
-      setCurrentIndex(currentIndex - 1);
-      setCurrentTrack(prev);
-      audioRef.current.src = prev.url;
-      audioRef.current.play();
-      setIsPlaying(true);
-    }
-  };
-
-  const seek = (value: number) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = value;
-    setCurrentTime(value);
+  const formatTime = (time: number) => {
+    if (isNaN(time)) return "0:00";
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
   };
 
   if (!currentTrack) return null;
 
   return (
-    <div className="fixed bottom-[56px] md:bottom-0 left-0 md:left-64 right-0 bg-black border-t border-neutral-800 p-3 md:p-4 z-40">
+    <>
+      {/* MOBILE MINI PLAYER */}
+      <div className="md:hidden fixed bottom-[60px] left-0 right-0 mx-2 p-2 bg-neutral-900/95 backdrop-blur-md rounded-lg border border-neutral-800 flex items-center justify-between z-50 shadow-xl transition-all">
+         <div 
+           className="absolute bottom-0 left-2 right-2 h-[2px] bg-neutral-700 rounded-full overflow-hidden"
+           onClick={(e) => {
+               const rect = e.currentTarget.getBoundingClientRect();
+               const x = e.clientX - rect.left;
+               const width = rect.width;
+               const percentage = x / width;
+               seek(percentage * duration);
+           }}
+         >
+            <div 
+              className="h-full bg-white/80" 
+              style={{ width: `${(currentTime / duration) * 100}%` }}
+            />
+         </div>
 
-      {/* MOBILE LAYOUT */}
-      <div className="flex flex-col md:hidden gap-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={currentTrack.cover} className="w-10 h-10 rounded" />
-            <div>
-              <p className="text-sm text-white truncate">
-                {currentTrack.title}
-              </p>
-              <p className="text-xs text-neutral-400 truncate">
-                {currentTrack.artist}
-              </p>
-            </div>
-          </div>
-          <button onClick={togglePlay} className="text-white text-lg">
-            {isPlaying ? "⏸" : "▶"}
-          </button>
-        </div>
+         <div className="flex items-center gap-3 flex-1 overflow-hidden mr-4">
+           <img src={currentTrack.cover} className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
+           <div className="overflow-hidden">
+             <p className="text-sm text-white font-medium truncate">
+               {currentTrack.title}
+             </p>
+             <p className="text-xs text-neutral-400 truncate">
+               {currentTrack.artist} • {formatTime(currentTime)} / {formatTime(duration)}
+             </p>
+           </div>
+         </div>
 
-        <input
-          type="range"
-          min={0}
-          max={duration || 0}
-          value={currentTime}
-          onChange={(e) => seek(Number(e.target.value))}
-        />
+         <div className="flex items-center gap-3 pr-2">
+            <button onClick={togglePlay} className="text-white text-2xl focus:outline-none">
+              {isPlaying ? "⏸" : "▶"}
+            </button>
+         </div>
       </div>
 
-      {/* DESKTOP LAYOUT */}
-      <div className="hidden md:flex items-center justify-between">
+      {/* DESKTOP PLAYER */}
+      <div className="hidden md:flex fixed bottom-0 left-0 md:left-64 right-0 bg-black border-t border-neutral-800 p-4 z-40 items-center justify-between">
         <div className="flex items-center gap-4 w-1/3">
           <img src={currentTrack.cover} className="w-14 h-14 rounded-md" />
           <div>
@@ -148,29 +76,33 @@ export default function Player() {
           </div>
         </div>
 
-        <div className="flex flex-col items-center w-1/3">
+        <div className="flex flex-col items-center max-w-[45%] w-full">
           <div className="flex gap-6 mb-2">
-            <button onClick={prevTrack}>⏮</button>
-            <button onClick={togglePlay}>
+            <button onClick={prevTrack} className="hover:text-white text-neutral-400">⏮</button>
+            <button onClick={togglePlay} className="text-white bg-white/10 rounded-full p-1 hover:scale-105 transition">
               {isPlaying ? "⏸" : "▶"}
             </button>
-            <button onClick={nextTrack}>⏭</button>
+            <button onClick={nextTrack} className="hover:text-white text-neutral-400">⏭</button>
           </div>
 
-          <input
-            type="range"
-            min={0}
-            max={duration || 0}
-            value={currentTime}
-            onChange={(e) => seek(Number(e.target.value))}
-            className="w-full"
-          />
+          <div className="flex items-center gap-2 w-full text-xs text-neutral-400 font-medium">
+             <span>{formatTime(currentTime)}</span>
+             <input
+               type="range"
+               min={0}
+               max={duration || 0}
+               value={currentTime}
+               onChange={(e) => seek(Number(e.target.value))}
+               className="flex-1 accent-green-500 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer"
+             />
+             <span>{formatTime(duration)}</span>
+          </div>
         </div>
 
-        <div className="w-1/3" />
+        <div className="w-1/3 flex justify-end">
+            {/* Volume or other controls could go here */}
+        </div>
       </div>
-
-      <audio ref={audioRef} onEnded={nextTrack} />
-    </div>
+    </>
   );
 }

@@ -21,6 +21,9 @@ type PlayerContextType = {
   prevTrack: () => void;
   downloadedSongs: Set<string>;
   refreshLibrary: () => void;
+  currentTime: number;
+  duration: number;
+  seek: (time: number) => void;
 };
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -31,6 +34,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<Track[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [downloadedSongs, setDownloadedSongs] = useState<Set<string>>(new Set());
+
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -55,16 +61,30 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         nextTrack();
     };
 
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+        }
+    };
+
+    const handleLoadedMetadata = () => {
+        if (audioRef.current) {
+            setDuration(audioRef.current.duration);
+        }
+    };
+
     audioRef.current.addEventListener('ended', handleEnded);
+    audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+    audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
     
     return () => {
         audioRef.current?.removeEventListener('ended', handleEnded);
+        audioRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
+        audioRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
         audioRef.current?.pause();
         audioRef.current = null;
     };
-  }, []); // Empty dependency array ensures this runs once on mount. 
-  // wait, if we use new Audio() inside useEffect, we can't easily access it in other functions without a ref 
-  // that is stable. The ref is stable.
+  }, []); // Empty dependency array ensures this runs once on mount.
 
   // Effect to handle actual playback when currentTrack changes
   useEffect(() => {
@@ -125,6 +145,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const seek = (time: number) => {
+      if (audioRef.current) {
+          audioRef.current.currentTime = time;
+          setCurrentTime(time);
+      }
+  };
+
   const refreshLibrary = () => {
       fetch("/api/my-songs")
       .then(res => res.json())
@@ -137,7 +164,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary, currentTime, duration, seek }}>
       {children}
     </PlayerContext.Provider>
   );

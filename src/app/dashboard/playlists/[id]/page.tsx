@@ -78,14 +78,6 @@ export default function PlaylistDetailsPage({
   };
 
   const handlePlayDownload = (track: any) => {
-    // Construct the Supabase Public URL
-    // NOTE: In a real app, we should check if it exists in DB first to get the real path.
-    // For this demo, we assume the standard path format: user_id/spotify_id.mp3
-    // But the frontend doesn't know the USER ID easily without a fetch.
-    // So we'll try to Play, but we might need the URL from the download response or a lookup.
-    
-    // Actually, let's just trigger the download endpoint to get the metadata (it returns existing if found)
-    // then play it.
     
     fetch("/api/download", {
        method: "POST",

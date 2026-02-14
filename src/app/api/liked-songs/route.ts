@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const response = await fetch("https://api.spotify.com/v1/me/tracks", {
+  const response = await fetch("https://api.spotify.com/v1/me/tracks?limit=50", {
     headers: {
       Authorization: `Bearer ${user.access_token}`,
     },

@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 
+import { usePlayer } from "@/contexts/PlayerContext";
+
 export const dynamic = "force-dynamic";
 
 export default function MySongsPage() {
   const [songs, setSongs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { playTrack } = usePlayer();
 
   useEffect(() => {
     fetch("/api/my-songs")
@@ -23,6 +26,7 @@ export default function MySongsPage() {
 
   const handlePlay = (song: any) => {
     const formatTrack = (s: any) => ({
+      id: s.id, // Ensure ID is passed
       title: s.title,
       artist: s.artist,
       cover: s.cover_url || "/placeholder.png",
@@ -32,18 +36,14 @@ export default function MySongsPage() {
     const queue = songs.map(formatTrack);
     const track = formatTrack(song);
 
-    window.dispatchEvent(
-      new CustomEvent("play_track", {
-        detail: { track, queue },
-      })
-    );
+    playTrack(track, queue);
   };
 
   if (loading)
     return <div className="text-white p-10">Loading your library...</div>;
 
   return (
-    <div className="text-white px-4 md:px-8 pb-32 md:ml-64">
+    <div className="text-white px-4 md:px-8 pb-32">
 
       {/* HEADER */}
       <div className="mb-8">
