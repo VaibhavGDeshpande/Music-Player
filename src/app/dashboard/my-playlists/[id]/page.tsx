@@ -125,7 +125,7 @@ export default function MyPlaylistDetailPage({
         <>
           {/* Desktop Table */}
           <div className="hidden md:block bg-black/20 p-6 rounded-md">
-            <table className="w-full text-left text-neutral-400 text-sm">
+          <table className="w-full text-left text-neutral-400 text-sm">
               <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
                 <tr>
                   <th className="pb-3 w-12 text-center">#</th>
@@ -134,21 +134,21 @@ export default function MyPlaylistDetailPage({
                   <th className="pb-3 text-right">Duration</th>
                   <th className="pb-3 text-right">Actions</th>
                 </tr>
-              </thead>
-              <tbody>
-                {normalizedSongs.map((track, index) => (
-                  <SongRow
-                    key={track.id + index}
-                    track={track}
-                    index={index}
-                    onDownload={handleDownload}
-                    onRemove={handleRemove}
-                    showRemoveButton={true}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+            </thead>
+            <tbody>
+              {normalizedSongs.map((track, index) => (
+                <SongRow
+                  key={track.id + index}
+                  track={track}
+                  index={index}
+                  onDownload={handleDownload}
+                  onRemove={handleRemove}
+                  showRemoveButton={true}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
 
           {/* Mobile List */}
           <div className="md:hidden space-y-3">

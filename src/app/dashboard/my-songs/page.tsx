@@ -65,7 +65,7 @@ export default function MySongsPage() {
         <>
           {/* DESKTOP TABLE */}
           <div className="hidden md:block bg-black/20 p-6 rounded-md overflow-hidden">
-            <table className="w-full text-left text-neutral-400 text-sm">
+          <table className="w-full text-left text-neutral-400 text-sm">
               <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
                 <tr>
                   <th className="pb-3 w-12 text-center">#</th>
@@ -74,19 +74,19 @@ export default function MySongsPage() {
                   <th className="pb-3 text-right">Added</th>
                   <th className="pb-3 text-right">Actions</th>
                 </tr>
-              </thead>
-              <tbody>
-                {normalizedSongs.map((track, index) => (
-                  <SongRow
-                    key={track.id + index}
-                    track={track}
-                    index={index}
-                    onDownload={handleDownload}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+            </thead>
+            <tbody>
+              {normalizedSongs.map((track, index) => (
+                <SongRow
+                  key={track.id + index}
+                  track={track}
+                  index={index}
+                  onDownload={handleDownload}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
 
           {/* MOBILE LIST */}
           <div className="md:hidden space-y-3">
