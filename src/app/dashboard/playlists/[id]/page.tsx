@@ -30,13 +30,14 @@ export default function PlaylistDetailsPage({
         setPlaylist({ error: "Failed to connect to server" });
       });
   }, [id]);
-  
-  console.log("Render State - Playlist:", playlist);
-  console.log("Render State - Tracks:", playlist?.tracks);
-  console.log("Render State - Items:", playlist?.tracks?.items);
 
   if (!playlist) return <div className="text-white p-10">Loading...</div>;
   if (playlist.error) return <div className="text-red-500 p-10">Error: {JSON.stringify(playlist.error)}</div>;
+
+  // Spotify API returns songs under "items" (not "tracks"), and each song is under "item" (not "track")
+  const tracksData = playlist.tracks || playlist.items;
+  const trackItems = tracksData?.items || [];
+  const totalSongs = tracksData?.total || trackItems.length || 0;
 
   const handleDownload = async (track: any) => {
     setShowOptions(null);
@@ -77,47 +78,6 @@ export default function PlaylistDetailsPage({
     }
   };
 
-  const handlePlayDownload = (track: any) => {
-    
-    fetch("/api/download", {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ trackId: track.id }),
-    })
-    .then(res => res.json())
-    .then(data => {
-       if (data.song) {
-          const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-          const trackWithUrl = {
-            ...track,
-            url: publicUrl,
-            artist: track.artists.map((a: any) => a.name).join(", "),
-            cover: track.album.images[0]?.url,
-            title: track.name,
-          };
-
-          const queue = (playlist?.tracks?.items || []).map((item: any) => ({
-            ...item.track,
-            artist: item.track.artists.map((a: any) => a.name).join(", "),
-            cover: item.track.album.images[0]?.url,
-            title: item.track.name,
-          }));
-
-          window.dispatchEvent(
-            new CustomEvent("play_track", {
-              detail: {
-                track: trackWithUrl,
-                queue: queue,
-              },
-            })
-          );
-       } else {
-         alert("Please download this song first!");
-       }
-    })
-    .catch(err => console.error("Play error", err));
-  };
-
   return (
     <div className="text-white relative pb-32 p-6">
       <div className="flex items-end gap-6 mb-8">
@@ -133,7 +93,7 @@ export default function PlaylistDetailsPage({
           <div className="mt-2 flex items-center gap-1 text-sm font-semibold">
             <span>{playlist.owner?.display_name || "Unknown"}</span>
             <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
-            <span>{playlist.tracks?.total || 0} songs</span>
+            <span>{totalSongs} songs</span>
           </div>
         </div>
       </div>
@@ -150,8 +110,9 @@ export default function PlaylistDetailsPage({
             </tr>
           </thead>
           <tbody>
-            {(playlist.tracks?.items || []).map((item: any, index: number) => {
-              const track = item.track;
+            {trackItems.map((item: any, index: number) => {
+              // Spotify API uses "item" in newer responses, "track" in older ones
+              const track = item.track || item.item;
               if (!track) return null;
 
               return (

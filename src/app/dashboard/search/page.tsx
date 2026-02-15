@@ -2,13 +2,19 @@
 
 import { useState } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
+import SongRow from "@/components/SongRow";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any>(null);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const { downloadedSongs, refreshLibrary } = usePlayer();
 
-  const { playTrack, downloadedSongs, refreshLibrary } = usePlayer();
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,55 +25,9 @@ export default function SearchPage() {
     setResults(data);
   };
 
-  // ✅ PLAY LOGIC
-  const handlePlay = (track: any) => {
-    if (downloadedSongs.has(track.id)) {
-      // Play full song from DB
-      fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackId: track.id }),
-      })
-      .then(res => res.json())
-      .then(data => {
-          if (data.song) {
-            const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-            playTrack({
-              id: track.id,
-              title: track.name,
-              artist: track.artists.map((a: any) => a.name).join(", "),
-              cover: track.album.images[0]?.url,
-              url: publicUrl,
-              duration: track.duration_ms / 1000,
-            });
-          }
-      })
-      .catch(err => console.error("Error playing full song:", err));
-    } else if (track.preview_url) {
-      playTrack({
-        id: track.id,
-        title: track.name,
-        artist: track.artists.map((a: any) => a.name).join(", "),
-        cover: track.album.images[0]?.url,
-        url: track.preview_url,
-      });
-    } else {
-      alert("No preview available. Please Save to Cloud!");
-    }
-  };
-
-
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
-
-  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const handleSave = async (track: any) => {
+  const handleDownload = async (track: any) => {
     if (downloadedSongs.has(track.id)) return;
 
-    setDownloadingId(track.id);
     showToast(`Downloading "${track.name}"...`, "info");
 
     try {
@@ -90,8 +50,6 @@ export default function SearchPage() {
     } catch (e) {
       console.error(e);
       showToast("Error saving song.", "error");
-    } finally {
-      setDownloadingId(null);
     }
   };
 
@@ -112,56 +70,28 @@ export default function SearchPage() {
           {results.tracks?.items.length > 0 && (
             <section>
               <h2 className="text-2xl font-bold mb-4">Songs</h2>
-              <div className="space-y-2">
-                {results.tracks.items.slice(0, 5).map((track: any) => {
-                  const isDownloaded = downloadedSongs.has(track.id);
-                  const isSaving = downloadingId === track.id;
-
-                  return (
-                    <div
-                      key={track.id}
-                      onClick={() => handlePlay(track)}
-                      className="flex items-center gap-4 hover:bg-white/10 p-2 rounded-md transition group cursor-pointer"
-                    >
-                      <img
-                        src={track.album.images[2]?.url}
-                        alt={track.name}
-                        className="w-12 h-12 rounded-sm"
+              <div className="bg-black/20 p-4 md:p-6 rounded-md">
+                <table className="w-full text-left text-neutral-400 text-sm">
+                  <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
+                    <tr>
+                      <th className="pb-3 w-12 text-center">#</th>
+                      <th className="pb-3">Title</th>
+                      <th className="pb-3 hidden md:table-cell">Album</th>
+                      <th className="pb-3 text-right hidden md:table-cell">Duration</th>
+                      <th className="pb-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.tracks.items.slice(0, 5).map((track: any, index: number) => (
+                      <SongRow
+                        key={track.id}
+                        track={track}
+                        index={index}
+                        onDownload={handleDownload}
                       />
-                      <div className="flex-1">
-                        <p className="font-semibold text-white">{track.name}</p>
-                        <p className="text-sm text-neutral-400">
-                          {track.artists.map((a: any) => a.name).join(", ")}
-                        </p>
-                      </div>
-
-                      {/* Save Button */}
-                      {!isDownloaded && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSave(track);
-                          }}
-                          disabled={isSaving}
-                          className="text-neutral-400 hover:text-white mr-3"
-                        >
-                          {isSaving ? "..." : "⬇"}
-                        </button>
-                      )}
-
-                      {isDownloaded && (
-                        <span className="text-green-500 mr-3">Saved</span>
-                      )}
-
-                      <div className="opacity-0 group-hover:opacity-100 text-neutral-400">
-                        {Math.floor(track.duration_ms / 60000)}:
-                        {((track.duration_ms % 60000) / 1000)
-                          .toFixed(0)
-                          .padStart(2, "0")}
-                      </div>
-                    </div>
-                  );
-                })}
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
@@ -220,7 +150,7 @@ export default function SearchPage() {
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed bottom-5 right-5 px-6 py-3 rounded-md shadow-lg text-white font-medium transition-all transform translate-y-0 opacity-100 z-50 ${
+          className={`fixed bottom-5 right-5 px-6 py-3 rounded-md shadow-lg text-white font-medium transition-all z-50 ${
             toast.type === "success" ? "bg-green-600" : toast.type === "error" ? "bg-red-600" : "bg-blue-600"
           }`}
         >

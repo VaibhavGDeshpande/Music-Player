@@ -21,6 +21,9 @@ type PlayerContextType = {
   prevTrack: () => void;
   downloadedSongs: Set<string>;
   refreshLibrary: () => void;
+  likedSongs: Set<string>;
+  refreshLikedSongs: () => void;
+  toggleLikeSong: (songData: any) => Promise<boolean>;
   currentTime: number;
   duration: number;
   seek: (time: number) => void;
@@ -34,6 +37,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<Track[]>([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [downloadedSongs, setDownloadedSongs] = useState<Set<string>>(new Set());
+  const [likedSongs, setLikedSongs] = useState<Set<string>>(new Set());
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -51,6 +55,17 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(err => console.error("Failed to cache library", err));
+
+    // Fetch liked songs
+    fetch("/api/user-liked-songs")
+      .then(res => res.json())
+      .then(data => {
+        if (data.songs) {
+          const ids = new Set<string>(data.songs.map((s: any) => s.spotify_id));
+          setLikedSongs(ids);
+        }
+      })
+      .catch(err => console.error("Failed to cache liked songs", err));
   }, []);
 
   // Initialize Audio Element once
@@ -163,8 +178,49 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       });
   };
 
+  const refreshLikedSongs = () => {
+    fetch("/api/user-liked-songs")
+      .then(res => res.json())
+      .then(data => {
+        if (data.songs) {
+          const ids = new Set<string>(data.songs.map((s: any) => s.spotify_id));
+          setLikedSongs(ids);
+        }
+      });
+  };
+
+  const toggleLikeSong = async (songData: any): Promise<boolean> => {
+    const isLiked = likedSongs.has(songData.spotify_id);
+    try {
+      if (isLiked) {
+        await fetch("/api/user-liked-songs", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ spotify_id: songData.spotify_id }),
+        });
+        setLikedSongs(prev => {
+          const next = new Set(prev);
+          next.delete(songData.spotify_id);
+          return next;
+        });
+        return false;
+      } else {
+        await fetch("/api/user-liked-songs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(songData),
+        });
+        setLikedSongs(prev => new Set(prev).add(songData.spotify_id));
+        return true;
+      }
+    } catch (err) {
+      console.error("Error toggling like:", err);
+      return isLiked;
+    }
+  };
+
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary, currentTime, duration, seek }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek }}>
       {children}
     </PlayerContext.Provider>
   );

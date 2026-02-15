@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import { usePlayer } from "@/contexts/PlayerContext";
+import SongRow from "@/components/SongRow";
 
 export const dynamic = "force-dynamic";
 
 export default function MySongsPage() {
   const [songs, setSongs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { playTrack } = usePlayer();
+  const { refreshLibrary } = usePlayer();
 
   useEffect(() => {
     fetch("/api/my-songs")
@@ -24,23 +24,26 @@ export default function MySongsPage() {
       });
   }, []);
 
-  const handlePlay = (song: any) => {
-    const formatTrack = (s: any) => ({
-      id: s.id, // Ensure ID is passed
-      title: s.title,
-      artist: s.artist,
-      cover: s.cover_url || "/placeholder.png",
-      url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${s.storage_path}`,
-    });
-
-    const queue = songs.map(formatTrack);
-    const track = formatTrack(song);
-
-    playTrack(track, queue);
+  // Songs from my-songs are already downloaded, so download is a no-op
+  const handleDownload = async (_track: any) => {
+    // already downloaded
   };
 
   if (loading)
     return <div className="text-white p-10">Loading your library...</div>;
+
+  // Normalize local DB songs to SongRow-compatible format
+  const normalizedSongs = songs.map((s) => ({
+    id: s.spotify_id || s.id,
+    name: s.title,
+    artists: [{ name: s.artist }],
+    album: { name: s.album || "Unknown", images: [{ url: s.cover_url }, { url: s.cover_url }, { url: s.cover_url }] },
+    duration_ms: s.duration_ms || 0,
+    added_at: s.created_at,
+    cover_url: s.cover_url,
+    storage_path: s.storage_path,
+    external_urls: { spotify: `https://open.spotify.com/track/${s.spotify_id || s.id}` },
+  }));
 
   return (
     <div className="text-white px-4 md:px-8 pb-32">
@@ -61,93 +64,39 @@ export default function MySongsPage() {
       ) : (
         <>
           {/* DESKTOP TABLE */}
-          <div className="hidden md:block bg-black/20 rounded-md overflow-hidden">
+          <div className="hidden md:block bg-black/20 p-6 rounded-md overflow-hidden">
             <table className="w-full text-left text-neutral-400 text-sm">
-              <thead className="sticky top-0 bg-black/80 backdrop-blur border-b border-neutral-700 uppercase text-xs tracking-wider">
+              <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
                 <tr>
-                  <th className="py-4 px-4 w-12 text-center">#</th>
-                  <th className="py-4 px-4">Title</th>
-                  <th className="py-4 px-4">Album</th>
-                  <th className="py-4 px-4 text-right">Added</th>
-                  <th className="py-4 px-4 w-12 text-right"></th>
+                  <th className="pb-3 w-12 text-center">#</th>
+                  <th className="pb-3">Title</th>
+                  <th className="pb-3">Album</th>
+                  <th className="pb-3 text-right">Added</th>
+                  <th className="pb-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {songs.map((song, index) => (
-                  <tr
-                    key={song.id}
-                    onClick={() => handlePlay(song)}
-                    className="hover:bg-white/10 transition group cursor-pointer"
-                  >
-                    <td className="py-3 px-4 text-center">
-                      {index + 1}
-                    </td>
-
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-4">
-                        <img
-                          src={song.cover_url || "/placeholder.png"}
-                          alt={song.title}
-                          className="w-10 h-10 rounded-sm"
-                        />
-                        <div>
-                          <p className="text-white font-medium group-hover:text-green-400">
-                            {song.title}
-                          </p>
-                          <p className="text-xs text-neutral-400">
-                            {song.artist}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-
-                    <td className="py-3 px-4 text-neutral-300">
-                      {song.album || "Unknown Album"}
-                    </td>
-
-                    <td className="py-3 px-4 text-right text-neutral-400">
-                      {new Date(song.created_at).toLocaleDateString()}
-                    </td>
-
-                    <td className="py-3 px-4 text-right">
-                      <button className="opacity-0 group-hover:opacity-100 transition hover:text-green-400">
-                        ▶
-                      </button>
-                    </td>
-                  </tr>
+                {normalizedSongs.map((track, index) => (
+                  <SongRow
+                    key={track.id + index}
+                    track={track}
+                    index={index}
+                    onDownload={handleDownload}
+                  />
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* MOBILE CARD LIST */}
+          {/* MOBILE LIST */}
           <div className="md:hidden space-y-3">
-            {songs.map((song) => (
-              <div
-                key={song.id}
-                onClick={() => handlePlay(song)}
-                className="flex items-center justify-between bg-black/30 p-3 rounded-md"
-              >
-                <div className="flex items-center gap-3">
-                  <img
-                    src={song.cover_url || "/placeholder.png"}
-                    alt={song.title}
-                    className="w-12 h-12 rounded-sm"
-                  />
-                  <div className="max-w-[180px]">
-                    <p className="text-white font-medium truncate">
-                      {song.title}
-                    </p>
-                    <p className="text-xs text-neutral-400 truncate">
-                      {song.artist}
-                    </p>
-                  </div>
-                </div>
-
-                <button className="text-green-400 text-lg">
-                  ▶
-                </button>
-              </div>
+            {normalizedSongs.map((track, index) => (
+              <SongRow
+                key={track.id + index}
+                track={track}
+                index={index}
+                onDownload={handleDownload}
+              />
             ))}
           </div>
         </>

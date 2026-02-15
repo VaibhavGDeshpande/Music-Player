@@ -2,23 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
+import SongRow from "@/components/SongRow";
 
 export default function LikedSongsPage() {
   const [tracks, setTracks] = useState<any[]>([]);
-  const { playTrack, downloadedSongs, refreshLibrary } = usePlayer();
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/liked-songs")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.items) {
-          setTracks(data.items.map((item: any) => item.track));
-        }
-      })
-      .catch(err => console.error("Liked songs fetch error:", err));
-  }, []);
-
+  const { downloadedSongs, refreshLibrary, likedSongs, toggleLikeSong } = usePlayer();
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
@@ -26,10 +14,85 @@ export default function LikedSongsPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const [spotifyRes, localRes] = await Promise.all([
+          fetch("/api/liked-songs").then((r) => r.json()).catch(() => null),
+          fetch("/api/user-liked-songs").then((r) => r.json()).catch(() => null),
+        ]);
+
+        // Normalize Spotify tracks
+        const spotifyTracks: any[] = [];
+        if (spotifyRes?.items) {
+          for (const item of spotifyRes.items) {
+            const t = item.track || item.item;
+            if (t) {
+              spotifyTracks.push({
+                id: t.id,
+                name: t.name,
+                artists: t.artists,
+                album: t.album,
+                duration_ms: t.duration_ms,
+                external_urls: t.external_urls,
+                preview_url: t.preview_url,
+                source: "spotify",
+              });
+            }
+          }
+        }
+
+        // Normalize local DB tracks
+        const localTracks: any[] = [];
+        if (localRes?.songs) {
+          for (const s of localRes.songs) {
+            localTracks.push({
+              id: s.spotify_id,
+              name: s.title,
+              artists: [{ name: s.artist }],
+              album: { name: s.album || "Unknown", images: [{ url: s.cover_url }, { url: s.cover_url }, { url: s.cover_url }] },
+              duration_ms: s.duration_ms || 0,
+              storage_path: s.storage_path,
+              cover_url: s.cover_url,
+              external_urls: { spotify: `https://open.spotify.com/track/${s.spotify_id}` },
+              source: "local",
+            });
+          }
+        }
+
+        // Merge: local first (they have storage_path), then Spotify-only
+        const seenIds = new Set<string>();
+        const merged: any[] = [];
+
+        for (const t of localTracks) {
+          seenIds.add(t.id);
+          const spotifyMatch = spotifyTracks.find((s) => s.id === t.id);
+          if (spotifyMatch) {
+            merged.push({ ...spotifyMatch, storage_path: t.storage_path, source: "both" });
+          } else {
+            merged.push(t);
+          }
+        }
+
+        for (const t of spotifyTracks) {
+          if (!seenIds.has(t.id)) {
+            seenIds.add(t.id);
+            merged.push(t);
+          }
+        }
+
+        setTracks(merged);
+      } catch (err) {
+        console.error("Error fetching liked songs:", err);
+      }
+    };
+
+    fetchAll();
+  }, []);
+
   const handleDownload = async (track: any) => {
     if (downloadedSongs.has(track.id)) return;
-    
-    setDownloadingId(track.id);
+
     showToast(`Downloading "${track.name}"...`, "info");
 
     try {
@@ -48,55 +111,11 @@ export default function LikedSongsPage() {
         refreshLibrary();
         showToast(`Saved "${track.name}" to Cloud!`, "success");
       } else {
-        const err = data.error || "Unknown error";
-        showToast(`Download failed: ${err}`, "error");
+        showToast(`Download failed: ${data.error || "Unknown error"}`, "error");
       }
     } catch (err) {
       showToast("Error downloading song", "error");
       console.error(err);
-    } finally {
-        setDownloadingId(null);
-    }
-  };
-
-  const handlePlayDownload = (track: any) => {
-    // If downloaded, playing generic way (via API or constructed URL if we cached it).
-    // The previous code fetched /api/download just to get the path. 
-    // We can do that or play preview if not downloaded.
-    
-    if (downloadedSongs.has(track.id)) {
-        // Fetch DB data to get path, or rely on naming convention if we want to be risky? 
-        // Safer to fetch metadata.
-        fetch("/api/download", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackId: track.id }),
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.song) {
-                const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-                playTrack({
-                    id: track.id,
-                    title: track.name,
-                    artist: track.artists.map((a: any) => a.name).join(", "),
-                    cover: track.album.images[0]?.url,
-                    url: publicUrl,
-                    duration: track.duration_ms / 1000,
-                });
-            }
-        });
-    } else if (track.preview_url) {
-        playTrack({
-            id: track.id,
-            title: track.name,
-            artist: track.artists.map((a: any) => a.name).join(", "),
-            cover: track.album.images[0]?.url,
-            url: track.preview_url,
-            duration: 30, // Preview is 30s
-        });
-    } else {
-         alert("No preview available. Please Save to Cloud!");
     }
   };
 
@@ -127,7 +146,7 @@ export default function LikedSongsPage() {
       <table className="w-full text-left text-neutral-400 text-sm">
         <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
           <tr>
-            <th className="pb-3 w-12">#</th>
+            <th className="pb-3 w-12 text-center">#</th>
             <th className="pb-3">Title</th>
             <th className="pb-3">Album</th>
             <th className="pb-3 text-right">Duration</th>
@@ -135,136 +154,40 @@ export default function LikedSongsPage() {
           </tr>
         </thead>
         <tbody>
-          {tracks.map((track, index) => {
-            const isDownloaded = downloadedSongs.has(track.id);
-            const isSaving = downloadingId === track.id;
-            
-            return (
-            <tr
-              key={track.id}
-              className="hover:bg-white/10 transition group"
-            >
-              <td className="py-3">{index + 1}</td>
-
-              <td className="py-3">
-                <div className="flex items-center gap-4">
-                  <img
-                    src={track.album.images[2]?.url}
-                    className="w-10 h-10 rounded-sm"
-                  />
-                  <div>
-                    <p className="text-white font-medium">
-                      {track.name}
-                    </p>
-                    <p className="text-xs">
-                      {track.artists.map((a: any) => a.name).join(", ")}
-                    </p>
-                  </div>
-                </div>
-              </td>
-
-              <td className="py-3 text-neutral-300">
-                {track.album.name}
-              </td>
-
-              <td className="py-3 text-right">
-                {Math.floor(track.duration_ms / 60000)}:
-                {((track.duration_ms % 60000) / 1000)
-                  .toFixed(0)
-                  .padStart(2, "0")}
-              </td>
-
-              <td className="py-3 text-right">
-                <div className="flex justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition">
-                  <button
-                    onClick={() => handlePlayDownload(track)}
-                    className="w-8 h-8 flex items-center justify-center rounded-full bg-green-500 text-black hover:scale-105"
-                    title={isDownloaded ? "Play" : "Play Preview"}
-                  >
-                    ▶
-                  </button>
-                  
-                  {!isDownloaded && (
-                      <button
-                        onClick={() => handleDownload(track)}
-                        disabled={isSaving}
-                        className={`w-8 h-8 flex items-center justify-center rounded-full border border-neutral-400 hover:border-white hover:bg-white/10 ${isSaving ? "animate-pulse" : ""}`}
-                        title="Save to Cloud"
-                      >
-                       {isSaving ? "..." : "⬇"}
-                      </button>
-                  )}
-                  
-                  {isDownloaded && <span className="text-green-500 text-xl self-center">✔</span>}
-                </div>
-              </td>
-            </tr>
-          );
-          })}
+          {tracks.map((track, index) => (
+            <SongRow
+              key={track.id + index}
+              track={track}
+              index={index}
+              onDownload={handleDownload}
+            />
+          ))}
         </tbody>
       </table>
     </div>
 
-    {/* MOBILE CARD LIST */}
+    {/* MOBILE LIST */}
     <div className="md:hidden space-y-3">
-      {tracks.map((track) => {
-         const isDownloaded = downloadedSongs.has(track.id);
-         const isSaving = downloadingId === track.id;
-
-         return (
-        <div
-          key={track.id}
-          className="flex items-center justify-between bg-black/30 p-3 rounded-md"
-        >
-          <div className="flex items-center gap-3">
-            <img
-              src={track.album.images[2]?.url}
-              className="w-12 h-12 rounded-sm"
-            />
-            <div className="max-w-[160px]">
-              <p className="text-white font-medium truncate">
-                {track.name}
-              </p>
-              <p className="text-xs text-neutral-400 truncate">
-                {track.artists.map((a: any) => a.name).join(", ")}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex gap-3 items-center">
-            <button
-              onClick={() => handlePlayDownload(track)}
-              className="text-green-400 text-2xl"
-            >
-              ▶
-            </button>
-            
-            {!isDownloaded && (
-                <button
-                  onClick={() => handleDownload(track)}
-                  disabled={isSaving}
-                  className="text-blue-400 text-2xl"
-                >
-                  {isSaving ? "..." : "⬇"}
-                </button>
-            )}
-            
-            {isDownloaded && <span className="text-green-500">✔</span>}
-          </div>
-        </div>
-      );
-      })}
+      {tracks.map((track, index) => (
+        <SongRow
+          key={track.id + index}
+          track={track}
+          index={index}
+          onDownload={handleDownload}
+        />
+      ))}
     </div>
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed bottom-5 right-5 px-6 py-3 rounded-md shadow-lg text-white font-medium transition-all transform translate-y-0 opacity-100 z-50 ${
-            toast.type === "success" ? "bg-green-600" : toast.type === "error" ? "bg-red-600" : "bg-blue-600"
-          }`}
-        >
-          {toast.message}
-        </div>
-      )}
+
+    {/* Toast Notification */}
+    {toast && (
+      <div
+        className={`fixed bottom-5 right-5 px-6 py-3 rounded-md shadow-lg text-white font-medium transition-all z-50 ${
+          toast.type === "success" ? "bg-green-600" : toast.type === "error" ? "bg-red-600" : "bg-blue-600"
+        }`}
+      >
+        {toast.message}
+      </div>
+    )}
   </div>
 );
 }

@@ -2,35 +2,37 @@
 
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useState } from "react";
+import SaveToPlaylistMenu from "./SaveToPlaylistMenu";
 
 interface SongRowProps {
   track: any;
   index: number;
-  onDownload: (track: any) => Promise<void>; 
+  onDownload: (track: any) => Promise<void>;
+  onRemove?: (track: any) => void;           // Optional remove-from-playlist callback
+  showRemoveButton?: boolean;                 // Show ✕ button
+  hidePlaylistButton?: boolean;               // Hide ➕ button
 }
 
-export default function SongRow({ track, index, onDownload }: SongRowProps) {
-  const { playTrack, currentTrack, isPlaying, downloadedSongs, refreshLibrary } = usePlayer();
+export default function SongRow({
+  track,
+  index,
+  onDownload,
+  onRemove,
+  showRemoveButton = false,
+  hidePlaylistButton = false,
+}: SongRowProps) {
+  const { playTrack, currentTrack, isPlaying, downloadedSongs, refreshLibrary, likedSongs, toggleLikeSong } = usePlayer();
   const [isHovered, setIsHovered] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
 
   const isCurrentTrack = currentTrack?.id === track.id;
   const isDownloaded = downloadedSongs.has(track.id);
+  const isLiked = likedSongs.has(track.id);
 
   const handlePlay = () => {
      if (isDownloaded) {
-         // Construct URL immediately without API call
-         // (Assuming standard path format: userId/trackId.mp3 - BUT we need userId to be sure. 
-         //  Actually, the public URL is deterministic if we know the path. 
-         //  Wait, we don't have the userId here easily to construct the path manually 
-         //  UNLESS we store full song objects in context or fetched from an endpoint.
-         //  For now, let's still hit the endpoint BUT with the expectation it returns 200 OK fast.
-         //  Optimized approach: The API call is fast if song exists. 
-         //  To make it TRULY offline/cached, we'd need to store the FULL URL in `downloadedSongs` map.)
-         
-         // Let's rely on the API for the URL for now, but at least we KNOW it's downloaded.
-         // To improve, we can change downloadedSongs to Map<string, string> (id -> url) structure later.
-         
          fetch("/api/download", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -42,7 +44,7 @@ export default function SongRow({ track, index, onDownload }: SongRowProps) {
                const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
                playTrack({
                  id: track.id,
-                 title: track.name,
+                 title: track.name || track.title,
                  artist: track.artists ? track.artists.map((a: any) => a.name).join(", ") : track.artist,
                  cover: track.album?.images?.[0]?.url || track.cover_url,
                  url: publicUrl,
@@ -50,7 +52,7 @@ export default function SongRow({ track, index, onDownload }: SongRowProps) {
             }
          });
      } else {
-         alert("Please 'Download' this song first to save it to your library!");
+         alert("Please 'Save to Cloud' this song first to play it!");
      }
   };
 
@@ -58,8 +60,43 @@ export default function SongRow({ track, index, onDownload }: SongRowProps) {
       setIsDownloading(true);
       await onDownload(track);
       setIsDownloading(false);
-      refreshLibrary(); // Update cache
+      refreshLibrary();
   };
+
+  const handleLike = async () => {
+    setIsLiking(true);
+    const songData = {
+      spotify_id: track.id,
+      title: track.name || track.title || "Unknown",
+      artist: track.artists
+        ? track.artists.map((a: any) => a.name).join(", ")
+        : track.artist || "Unknown",
+      album: track.album?.name || track.album || null,
+      cover_url: track.album?.images?.[0]?.url || track.cover_url || null,
+      duration_ms: track.duration_ms || null,
+    };
+    await toggleLikeSong(songData);
+    setIsLiking(false);
+  };
+
+  const artistName = track.artists
+    ? track.artists.map((a: any) => a.name).join(", ")
+    : track.artist || "Unknown";
+
+  const albumName = track.album?.name || track.album || "Unknown Album";
+
+  const coverImg =
+    track.album?.images?.[2]?.url ||
+    track.album?.images?.[0]?.url ||
+    track.cover_url ||
+    "/placeholder.png";
+
+  const addedDate = track.added_at || track.created_at;
+  const duration = track.duration_ms
+    ? `${Math.floor(track.duration_ms / 60000)}:${((track.duration_ms % 60000) / 1000).toFixed(0).padStart(2, "0")}`
+    : addedDate
+      ? new Date(addedDate).toLocaleDateString()
+      : "--:--";
 
   return (
     <tr
@@ -67,6 +104,7 @@ export default function SongRow({ track, index, onDownload }: SongRowProps) {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
+      {/* # Column */}
       <td className="py-3 px-2 rounded-l-md text-center w-12">
         {isHovered ? (
           <button onClick={handlePlay} className="text-white">
@@ -78,40 +116,90 @@ export default function SongRow({ track, index, onDownload }: SongRowProps) {
           </span>
         )}
       </td>
+
+      {/* Title Column */}
       <td className="py-3">
         <div className="flex items-center gap-4">
           <img
-            src={track.album?.images?.[2]?.url || track.cover_url || "/placeholder.png"}
-            alt={track.name}
+            src={coverImg}
+            alt={track.name || track.title}
             className="w-10 h-10 rounded-sm object-cover"
           />
           <div>
             <p className={`font-semibold ${isCurrentTrack ? "text-green-500" : "text-white"}`}>
-              {track.name}
+              {track.name || track.title}
             </p>
             <p className="text-sm text-neutral-400">
-               {track.artists ? track.artists.map((a: any) => a.name).join(", ") : track.artist}
+               {artistName}
             </p>
           </div>
         </div>
       </td>
+
+      {/* Album Column */}
       <td className="py-3 text-neutral-400 hidden md:table-cell">
-        {track.album?.name || track.album}
+        {albumName}
       </td>
+
+      {/* Duration Column */}
+      <td className="py-3 text-right text-neutral-400 hidden md:table-cell">
+        {duration}
+      </td>
+
+      {/* Actions Column */}
       <td className="py-3 text-right text-neutral-400 rounded-r-md">
-         {/* Actions */}
-         <div className="flex items-center justify-end gap-3 px-4">
+         <div className="flex items-center justify-end gap-2 px-2 relative">
+            {/* Like button */}
+            <button
+              onClick={handleLike}
+              disabled={isLiking}
+              className={`transition hover:scale-110 ${isLiked ? "text-green-500" : "text-neutral-400 hover:text-white"} ${isLiking ? "animate-pulse" : ""}`}
+              title={isLiked ? "Unlike" : "Like"}
+            >
+              {isLiked ? "❤️" : "🤍"}
+            </button>
+
+            {/* Save to playlist button */}
+            {!hidePlaylistButton && (
+              <button
+                onClick={() => setShowPlaylistMenu(!showPlaylistMenu)}
+                className="text-neutral-400 hover:text-white transition hover:scale-110"
+                title="Save to Playlist"
+              >
+                ➕
+              </button>
+            )}
+
+            {showPlaylistMenu && (
+              <SaveToPlaylistMenu
+                track={track}
+                onClose={() => setShowPlaylistMenu(false)}
+              />
+            )}
+
+            {/* Download / Save to Cloud button */}
             {isDownloaded ? (
-                <span className="text-green-500" title="Downloaded">✔</span>
+                <span className="text-green-500" title="Saved to Cloud">✔</span>
             ) : (
                 <button 
                     onClick={handleDownloadClick}
                     className={`hover:text-white ${isDownloading ? "animate-pulse text-blue-400" : ""}`}
-                    title="Download / Save"
+                    title="Save to Cloud"
                     disabled={isDownloading}
                 >
                     {isDownloading ? "..." : "⬇"}
                 </button>
+            )}
+
+            {/* Remove button (for user playlists) */}
+            {showRemoveButton && onRemove && (
+              <button
+                onClick={() => onRemove(track)}
+                className="text-neutral-400 hover:text-red-400 transition hover:scale-110"
+                title="Remove"
+              >
+                ✕
+              </button>
             )}
          </div>
       </td>

@@ -17,6 +17,7 @@ export default function Sidebar() {
     { href: "/dashboard/search", label: "Search", icon: "🔍" },
     { href: "/dashboard/library", label: "Liked Songs", icon: "❤️" },
     { href: "/dashboard/my-songs", label: "My Songs", icon: "🎵" },
+    { href: "/dashboard/my-playlists", label: "My Playlists", icon: "📁" },
   ];
 
   return (
