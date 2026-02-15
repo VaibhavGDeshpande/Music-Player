@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
           ).toString("base64"),
       },
       body: new URLSearchParams({
-        grant_type: "authorization_code",
+        grant_type: "client_credentials",
         code,
         redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
       }),
