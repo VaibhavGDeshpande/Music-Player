@@ -8,6 +8,7 @@ import {
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  console.log(`[Callback Debug] Received code: ${code ? code.substring(0, 5) + '...' : 'MISSING'}`);
 
   if (!code) {
     return NextResponse.json(
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
           ).toString("base64"),
       },
       body: new URLSearchParams({
-        grant_type: "client_credentials",
+        grant_type: "authorization_code",
         code,
         redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
       }),
