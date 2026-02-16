@@ -87,6 +87,7 @@ export default function MySongsPage() {
                   track={track}
                   index={index}
                   onDownload={handleDownload}
+                    allTracks={normalizedSongs}
                 />
               ))}
             </tbody>
@@ -103,6 +104,7 @@ export default function MySongsPage() {
                     track={track}
                     index={index}
                     onDownload={handleDownload}
+                    allTracks={normalizedSongs}
                   />
                 ))}
               </tbody>

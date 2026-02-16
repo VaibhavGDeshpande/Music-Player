@@ -120,7 +120,8 @@ export default function PlaylistDetailsPage({
                     key={track.id + index} 
                     track={track} 
                     index={index} 
-                    onDownload={handleDownload} 
+                    onDownload={handleDownload}
+                    allTracks={trackItems.map((item: any) => item.track || item.item).filter(Boolean)}
                 />
               );
             })}

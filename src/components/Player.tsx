@@ -1,7 +1,12 @@
 "use client";
 
 import { usePlayer } from "@/contexts/PlayerContext";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+
+type LyricLine = {
+  startTimeMs: string;
+  words: string;
+};
 
 export default function Player() {
   const {
@@ -19,6 +24,13 @@ export default function Player() {
 
   const [showBigPlayer, setShowBigPlayer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [lyrics, setLyrics] = useState<LyricLine[]>([]);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsError, setLyricsError] = useState(false);
+  const lyricsContainerRef = useRef<HTMLDivElement>(null);
+  const activeLineRef = useRef<HTMLParagraphElement>(null);
+  const lastTrackIdRef = useRef<string | null>(null);
 
   const formatTime = (time: number) => {
     if (isNaN(time)) return "0:00";
@@ -28,7 +40,6 @@ export default function Player() {
   };
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
   const isLiked = currentTrack ? likedSongs.has(currentTrack.id) : false;
 
   const handleLike = async () => {
@@ -41,6 +52,66 @@ export default function Player() {
     });
   };
 
+  // Fetch lyrics when track changes
+  const fetchLyrics = useCallback(async (trackId: string) => {
+    if (lastTrackIdRef.current === trackId && lyrics.length > 0) return;
+    lastTrackIdRef.current = trackId;
+    setLyricsLoading(true);
+    setLyricsError(false);
+    setLyrics([]);
+
+    try {
+      const res = await fetch(`/api/lyrics?trackid=${trackId}`);
+      if (!res.ok) throw new Error("Failed to fetch lyrics");
+      const data = await res.json();
+      if (data.error || !data.lines || data.lines.length === 0) {
+        setLyricsError(true);
+      } else {
+        // Filter out empty lines at the end
+        const filteredLines = data.lines.filter(
+          (line: LyricLine) => line.words.trim() !== ""
+        );
+        setLyrics(filteredLines.length > 0 ? data.lines : []);
+        if (filteredLines.length === 0) setLyricsError(true);
+      }
+    } catch {
+      setLyricsError(true);
+    } finally {
+      setLyricsLoading(false);
+    }
+  }, [lyrics.length]);
+
+  useEffect(() => {
+    if (showBigPlayer && currentTrack) {
+      fetchLyrics(currentTrack.id);
+    }
+  }, [showBigPlayer, currentTrack?.id, fetchLyrics]);
+
+  // Find active lyric line index
+  const activeIndex = useMemo(() => {
+    if (lyrics.length === 0) return -1;
+    const timeMs = currentTime * 1000;
+    let idx = -1;
+    for (let i = 0; i < lyrics.length; i++) {
+      if (timeMs >= parseInt(lyrics[i].startTimeMs)) {
+        idx = i;
+      } else {
+        break;
+      }
+    }
+    return idx;
+  }, [currentTime, lyrics]);
+
+  // Auto-scroll to active lyric
+  useEffect(() => {
+    if (showLyrics && activeLineRef.current && lyricsContainerRef.current) {
+      activeLineRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeIndex, showLyrics]);
+
   if (!currentTrack) return null;
 
   return (
@@ -52,7 +123,6 @@ export default function Player() {
         className="md:hidden fixed bottom-[60px] left-0 right-0 mx-2 p-2 bg-neutral-900/95 backdrop-blur-md rounded-lg border border-neutral-800 flex items-center justify-between z-50 shadow-xl transition-all cursor-pointer"
         onClick={() => setShowBigPlayer(true)}
       >
-        {/* Progress thin line */}
         <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-neutral-700 rounded-full overflow-hidden">
           <div
             className="h-full bg-white/80 transition-all"
@@ -76,7 +146,18 @@ export default function Player() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 pr-2">
+        <div className="flex items-center gap-2 pr-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              prevTrack();
+            }}
+            className="text-white focus:outline-none active:scale-90 transition"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+            </svg>
+          </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -86,18 +167,26 @@ export default function Player() {
           >
             {isPlaying ? "⏸" : "▶"}
           </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              nextTrack();
+            }}
+            className="text-white focus:outline-none active:scale-90 transition"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* ============================================
-           FULL-SCREEN BIG PLAYER (Mobile)
-         ============================================ */}
       {showBigPlayer && (
         <div className="md:hidden fixed inset-0 z-[100] flex flex-col bg-gradient-to-b from-neutral-800 via-neutral-900 to-black animate-slideUp">
           {/* Top bar */}
-          <div className="flex items-center justify-between px-6 pt-4 pb-4">
+          <div className="flex items-center justify-between px-6 pt-4 pb-2">
             <button
-              onClick={() => setShowBigPlayer(false)}
+              onClick={() => { setShowBigPlayer(false); setShowLyrics(false); }}
               className="text-white text-2xl p-2 -ml-2 active:scale-90 transition"
               aria-label="Close"
             >
@@ -113,18 +202,74 @@ export default function Player() {
                 Now Playing
               </p>
             </div>
-            <div className="w-10" /> {/* spacer */}
+            <div className="w-10" />
           </div>
 
-          {/* Album Art */}
-          <div className="flex-1 flex items-center justify-center px-8 pt-4">
-  <div className="w-full max-w-[340px] aspect-square rounded-lg overflow-hidden shadow-2xl">
-              <img
-                src={currentTrack.cover || "/placeholder.svg"}
-                alt={currentTrack.title}
-                className="w-full h-full object-cover"
-              />
-            </div>
+          {/* Main content — toggles between album art and lyrics */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {!showLyrics ? (
+              /* Album Art View */
+              <div className="flex-1 flex items-center justify-center px-8 pt-4">
+                <div className="w-full max-w-[340px] aspect-square rounded-lg overflow-hidden shadow-2xl">
+                  <img
+                    src={currentTrack.cover || "/placeholder.svg"}
+                    alt={currentTrack.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+            ) : (
+              /* Lyrics View */
+              <div
+                ref={lyricsContainerRef}
+                className="flex-1 overflow-y-auto px-8 pt-4 pb-4 scroll-smooth"
+              >
+                {lyricsLoading ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-neutral-400 text-sm animate-pulse">Loading lyrics...</div>
+                  </div>
+                ) : lyricsError ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-neutral-500 text-sm text-center">
+                      <p className="text-3xl mb-3">🎵</p>
+                      <p>No lyrics available for this track</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4 py-8">
+                    {lyrics.map((line, index) => {
+                      const isActive = index === activeIndex;
+                      const isPast = index < activeIndex;
+                      const isEmpty = line.words.trim() === "";
+
+                      if (isEmpty) {
+                        return <div key={index} className="h-6" />;
+                      }
+
+                      return (
+                        <p
+                          key={index}
+                          ref={isActive ? activeLineRef : null}
+                          onClick={() => {
+                            seek(parseInt(line.startTimeMs) / 1000);
+                          }}
+                          className={`text-xl font-bold leading-relaxed cursor-pointer transition-all duration-300 ${
+                            isActive
+                              ? "text-white scale-[1.02] origin-left"
+                              : isPast
+                              ? "text-neutral-500"
+                              : "text-neutral-600"
+                          }`}
+                        >
+                          {line.words}
+                        </p>
+                      );
+                    })}
+                    <div className="h-40" /> {/* bottom spacer */}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Song Info + Like */}
@@ -173,7 +318,6 @@ export default function Player() {
                 className="h-full bg-white rounded-full transition-all relative"
                 style={{ width: `${progress}%` }}
               >
-                {/* Thumb */}
                 <div className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg transform translate-x-1/2 group-active:scale-125 transition" />
               </div>
             </div>
@@ -184,7 +328,7 @@ export default function Player() {
           </div>
 
           {/* Transport Controls */}
-          <div className="flex items-center justify-between px-8 mb-2">
+          <div className="flex items-center justify-between px-8 mb-1">
             {/* Shuffle */}
             <button className="text-neutral-400 active:text-white transition p-2">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
@@ -236,8 +380,22 @@ export default function Player() {
             </button>
           </div>
 
-          {/* Bottom safe area spacer */}
-          <div className="h-8" />
+          {/* Lyrics Toggle Button */}
+          <div className="flex justify-center pb-6 pt-1">
+            <button
+              onClick={() => setShowLyrics(!showLyrics)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
+                showLyrics
+                  ? "bg-green-500 text-black"
+                  : "bg-neutral-800 text-neutral-400 active:bg-neutral-700"
+              }`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+              </svg>
+              Lyrics
+            </button>
+          </div>
         </div>
       )}
 
@@ -306,7 +464,6 @@ export default function Player() {
         </div>
 
         <div className="w-1/3 flex justify-end">
-          {/* Volume or other controls could go here */}
         </div>
       </div>
 

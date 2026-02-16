@@ -11,6 +11,7 @@ interface SongRowProps {
   onRemove?: (track: any) => void;
   showRemoveButton?: boolean;
   hidePlaylistButton?: boolean;
+  allTracks?: any[];
 }
 
 export default function SongRow({
@@ -20,6 +21,7 @@ export default function SongRow({
   onRemove,
   showRemoveButton = false,
   hidePlaylistButton = false,
+  allTracks = [],
 }: SongRowProps) {
   const {
     playTrack,
@@ -45,6 +47,14 @@ export default function SongRow({
      ROW CLICK PLAY/PAUSE LOGIC
   ========================== */
 
+  const buildTrackObj = (t: any, storageUrl: string) => ({
+    id: t.id,
+    title: t.name || t.title,
+    artist: t.artists ? t.artists.map((a: any) => a.name).join(", ") : t.artist,
+    cover: t.album?.images?.[0]?.url || t.cover_url,
+    url: storageUrl,
+  });
+
   const handleRowClick = async () => {
     try {
       // If clicking currently playing track → toggle pause/play
@@ -69,17 +79,35 @@ export default function SongRow({
       if (!data.song) return;
 
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
+      const clickedTrack = buildTrackObj(track, publicUrl);
 
-      playTrack({
-        id: track.id,
-        title: track.name || track.title,
-        artist: track.artists
-          ? track.artists.map((a: any) => a.name).join(", ")
-          : track.artist,
-        cover:
-          track.album?.images?.[0]?.url || track.cover_url,
-        url: publicUrl,
-      });
+      // Build queue from all downloaded tracks on this page
+      const downloadedTracks = allTracks.filter((t) => downloadedSongs.has(t.id));
+      if (downloadedTracks.length > 1) {
+        // Resolve storage URLs for all downloaded tracks in the list
+        const queue = await Promise.all(
+          downloadedTracks.map(async (t) => {
+            if (t.id === track.id) return clickedTrack;
+            try {
+              const r = await fetch("/api/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ trackId: t.id }),
+              });
+              const d = await r.json();
+              if (!d.song) return null;
+              const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${d.song.storage_path}`;
+              return buildTrackObj(t, url);
+            } catch {
+              return null;
+            }
+          })
+        );
+        const validQueue = queue.filter((q): q is NonNullable<typeof q> => q !== null);
+        playTrack(clickedTrack, validQueue);
+      } else {
+        playTrack(clickedTrack);
+      }
     } catch (error) {
       console.error("Playback error:", error);
     }

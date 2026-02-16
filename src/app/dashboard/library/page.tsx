@@ -195,6 +195,7 @@ export default function LikedSongsPage() {
                   track={track}
                   index={index}
                   onDownload={handleDownload}
+                    allTracks={tracks}
                 />
               ))}
             </tbody>
@@ -211,6 +212,7 @@ export default function LikedSongsPage() {
                   track={track}
                   index={index}
                   onDownload={handleDownload}
+                    allTracks={tracks}
                 />
               ))}
             </tbody>

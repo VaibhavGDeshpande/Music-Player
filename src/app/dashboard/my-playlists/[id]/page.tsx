@@ -142,6 +142,7 @@ export default function MyPlaylistDetailPage({
                   track={track}
                   index={index}
                   onDownload={handleDownload}
+                  allTracks={normalizedSongs}
                   onRemove={handleRemove}
                   showRemoveButton={true}
                 />
@@ -160,6 +161,7 @@ export default function MyPlaylistDetailPage({
                     track={track}
                     index={index}
                     onDownload={handleDownload}
+                  allTracks={normalizedSongs}
                     onRemove={handleRemove}
                     showRemoveButton={true}
                   />

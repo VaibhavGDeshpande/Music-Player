@@ -202,6 +202,7 @@ export default function SearchPage() {
                             track={topTrack}
                             index={0}
                             onDownload={handleDownload}
+                            allTracks={[topTrack, ...otherTracks]}
                           />
                         )}
                         {otherTracks.map((track: any, index: number) => (
@@ -210,6 +211,7 @@ export default function SearchPage() {
                             track={track}
                             index={index + 1}
                             onDownload={handleDownload}
+                            allTracks={[topTrack, ...otherTracks]}
                           />
                         ))}
                       </tbody>
