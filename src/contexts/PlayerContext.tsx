@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useRef, useEffect } from "react";
+import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from "react";
 
 type Track = {
   id: string;
@@ -27,6 +27,11 @@ type PlayerContextType = {
   currentTime: number;
   duration: number;
   seek: (time: number) => void;
+  // Caching
+  mySongsCache: any[] | null;
+  likedSongsCache: any[] | null;
+  refreshMySongsCache: () => Promise<any[]>;
+  refreshLikedSongsCache: () => Promise<any[]>;
 };
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -42,31 +47,51 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  // Caching state
+  const [mySongsCache, setMySongsCache] = useState<any[] | null>(null);
+  const [likedSongsCache, setLikedSongsCache] = useState<any[] | null>(null);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Initial fetch of user's downloaded songs to populate cache
-  useEffect(() => {
-    fetch("/api/my-songs")
-      .then(res => res.json())
-      .then(data => {
-        if (data.songs) {
-          const ids = new Set<string>(data.songs.map((s: any) => s.spotify_id));
-          setDownloadedSongs(ids);
-        }
-      })
-      .catch(err => console.error("Failed to cache library", err));
-
-    // Fetch liked songs
-    fetch("/api/user-liked-songs")
-      .then(res => res.json())
-      .then(data => {
-        if (data.songs) {
-          const ids = new Set<string>(data.songs.map((s: any) => s.spotify_id));
-          setLikedSongs(ids);
-        }
-      })
-      .catch(err => console.error("Failed to cache liked songs", err));
+  // Fetch and cache my-songs
+  const refreshMySongsCache = useCallback(async (): Promise<any[]> => {
+    try {
+      const res = await fetch("/api/my-songs");
+      const data = await res.json();
+      const songs = data.songs || [];
+      setMySongsCache(songs);
+      // Also update the downloaded IDs set
+      const ids = new Set<string>(songs.map((s: any) => s.spotify_id));
+      setDownloadedSongs(ids);
+      return songs;
+    } catch (err) {
+      console.error("Failed to fetch my-songs", err);
+      return [];
+    }
   }, []);
+
+  // Fetch and cache liked-songs (local DB)
+  const refreshLikedSongsCache = useCallback(async (): Promise<any[]> => {
+    try {
+      const res = await fetch("/api/user-liked-songs");
+      const data = await res.json();
+      const songs = data.songs || [];
+      setLikedSongsCache(songs);
+      // Also update the liked IDs set
+      const ids = new Set<string>(songs.map((s: any) => s.spotify_id));
+      setLikedSongs(ids);
+      return songs;
+    } catch (err) {
+      console.error("Failed to fetch liked-songs", err);
+      return [];
+    }
+  }, []);
+
+  // Initial fetch on mount
+  useEffect(() => {
+    refreshMySongsCache();
+    refreshLikedSongsCache();
+  }, [refreshMySongsCache, refreshLikedSongsCache]);
 
   // Initialize Audio Element once
   useEffect(() => {
@@ -125,7 +150,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const index = newQueue.findIndex(t => t.id === track.id);
       setCurrentIndex(index !== -1 ? index : 0);
     } else {
-        // If no queue provided, just play this one (or append? lets keep it simple: clear queue)
+        // If no queue provided, just play this one
         setQueue([track]);
         setCurrentIndex(0);
     }
@@ -155,7 +180,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentIndex(prevIndex);
       setCurrentTrack(queue[prevIndex]);
     } else {
-        // Restart current song if at start?
+        // Restart current song if at start
         if (audioRef.current) audioRef.current.currentTime = 0;
     }
   };
@@ -167,26 +192,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       }
   };
 
+  // Convenience wrappers that also invalidate caches
   const refreshLibrary = () => {
-      fetch("/api/my-songs")
-      .then(res => res.json())
-      .then(data => {
-        if (data.songs) {
-          const ids = new Set<string>(data.songs.map((s: any) => s.spotify_id));
-          setDownloadedSongs(ids);
-        }
-      });
+    refreshMySongsCache();
   };
 
   const refreshLikedSongs = () => {
-    fetch("/api/user-liked-songs")
-      .then(res => res.json())
-      .then(data => {
-        if (data.songs) {
-          const ids = new Set<string>(data.songs.map((s: any) => s.spotify_id));
-          setLikedSongs(ids);
-        }
-      });
+    refreshLikedSongsCache();
   };
 
   const toggleLikeSong = async (songData: any): Promise<boolean> => {
@@ -203,6 +215,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           next.delete(songData.spotify_id);
           return next;
         });
+        // Invalidate liked songs cache
+        setLikedSongsCache(prev => prev ? prev.filter(s => s.spotify_id !== songData.spotify_id) : null);
         return false;
       } else {
         await fetch("/api/user-liked-songs", {
@@ -211,6 +225,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           body: JSON.stringify(songData),
         });
         setLikedSongs(prev => new Set(prev).add(songData.spotify_id));
+        // Invalidate liked songs cache — add the new song at the top
+        setLikedSongsCache(prev => {
+          const newSong = {
+            spotify_id: songData.spotify_id,
+            title: songData.title,
+            artist: songData.artist,
+            album: songData.album,
+            cover_url: songData.cover_url,
+            duration_ms: songData.duration_ms,
+          };
+          return prev ? [newSong, ...prev] : [newSong];
+        });
         return true;
       }
     } catch (err) {
@@ -220,7 +246,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache }}>
       {children}
     </PlayerContext.Provider>
   );

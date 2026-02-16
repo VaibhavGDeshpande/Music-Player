@@ -7,22 +7,21 @@ import SongRow from "@/components/SongRow";
 export const dynamic = "force-dynamic";
 
 export default function MySongsPage() {
-  const [songs, setSongs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { refreshLibrary } = usePlayer();
+  const { mySongsCache, refreshMySongsCache } = usePlayer();
+  const [songs, setSongs] = useState<any[]>(mySongsCache || []);
+  const [loading, setLoading] = useState(mySongsCache === null);
 
   useEffect(() => {
-    fetch("/api/my-songs")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.songs) setSongs(data.songs);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Failed to load songs", err);
+    if (mySongsCache !== null) {
+      setSongs(mySongsCache);
+      setLoading(false);
+    } else {
+      refreshMySongsCache().then((data) => {
+        setSongs(data);
         setLoading(false);
       });
-  }, []);
+    }
+  }, [mySongsCache, refreshMySongsCache]);
 
   // Songs from my-songs are already downloaded, so download is a no-op
   const handleDownload = async (_track: any) => {
@@ -49,16 +48,22 @@ export default function MySongsPage() {
     <div className="text-white px-4 md:px-8 pb-32">
 
       {/* HEADER */}
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-5xl font-bold">My Songs</h1>
-        <p className="text-neutral-400 mt-2">
-          {songs.length} downloaded songs
-        </p>
+      <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-10 text-center md:text-left pt-6">
+        <div className="w-40 h-40 md:w-52 md:h-52 bg-gradient-to-br from-emerald-600 to-cyan-400 flex items-center justify-center shadow-2xl rounded-md">
+          <span className="text-5xl md:text-6xl">🎵</span>
+        </div>
+        <div>
+          <p className="text-xs md:text-sm font-bold uppercase mb-2">Library</p>
+          <h1 className="text-3xl md:text-6xl font-bold mb-3">My Songs</h1>
+          <p className="text-sm text-neutral-400">
+            {songs.length} downloaded songs
+          </p>
+        </div>
       </div>
 
       {songs.length === 0 ? (
         <div className="text-neutral-400">
-          You haven't downloaded any songs yet. Go to a playlist and click the
+          You haven&apos;t downloaded any songs yet. Go to a playlist and click the
           download button!
         </div>
       ) : (
@@ -89,15 +94,19 @@ export default function MySongsPage() {
         </div>
 
           {/* MOBILE LIST */}
-          <div className="md:hidden space-y-3">
-            {normalizedSongs.map((track, index) => (
-              <SongRow
-                key={track.id + index}
-                track={track}
-                index={index}
-                onDownload={handleDownload}
-              />
-            ))}
+          <div className="md:hidden bg-black/20 p-3 rounded-md">
+            <table className="w-full text-left text-neutral-400 text-sm">
+              <tbody>
+                {normalizedSongs.map((track, index) => (
+                  <SongRow
+                    key={track.id + index}
+                    track={track}
+                    index={index}
+                    onDownload={handleDownload}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

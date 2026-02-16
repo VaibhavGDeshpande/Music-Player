@@ -119,7 +119,7 @@ export default function SongRow({
         artist: track.artists
           ? track.artists.map((a: any) => a.name).join(", ")
           : track.artist || "Unknown",
-        album: track.album?.name || track.album || null,
+        album: track.album?.name || (typeof track.album === "string" ? track.album : null),
         cover_url:
           track.album?.images?.[0]?.url ||
           track.cover_url ||
@@ -138,13 +138,13 @@ export default function SongRow({
     : track.artist || "Unknown";
 
   const albumName =
-    track.album?.name || track.album || "Unknown Album";
+    track.album?.name || (typeof track.album === "string" ? track.album : "Unknown Album");
 
   const coverImg =
     track.album?.images?.[2]?.url ||
     track.album?.images?.[0]?.url ||
     track.cover_url ||
-    "/placeholder.png";
+    "/placeholder.svg";
 
   const addedDate = track.added_at || track.created_at;
 

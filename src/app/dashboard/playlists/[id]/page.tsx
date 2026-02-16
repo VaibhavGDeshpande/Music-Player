@@ -79,18 +79,18 @@ export default function PlaylistDetailsPage({
   };
 
   return (
-    <div className="text-white relative pb-32 p-6">
-      <div className="flex items-end gap-6 mb-8">
+    <div className="text-white relative pb-32 px-4 md:px-6 pt-6">
+      <div className="flex flex-col md:flex-row items-center md:items-end gap-6 mb-8">
         <img
-          src={playlist.images?.[0]?.url || "/placeholder.png"}
+          src={playlist.images?.[0]?.url || "/placeholder.svg"}
           alt={playlist.name}
-          className="w-52 h-52 shadow-2xl rounded-md"
+          className="w-36 h-36 md:w-52 md:h-52 shadow-2xl rounded-md"
         />
-        <div>
-          <p className="text-sm font-bold uppercase mb-2">Playlist</p>
-          <h1 className="text-5xl md:text-7xl font-bold mb-4">{playlist.name}</h1>
-          <p className="text-neutral-400">{playlist.description}</p>
-          <div className="mt-2 flex items-center gap-1 text-sm font-semibold">
+        <div className="text-center md:text-left">
+          <p className="text-xs md:text-sm font-bold uppercase mb-2">Playlist</p>
+          <h1 className="text-3xl md:text-7xl font-bold mb-3">{playlist.name}</h1>
+          <p className="text-neutral-400 text-sm md:text-base">{playlist.description}</p>
+          <div className="mt-2 flex items-center justify-center md:justify-start gap-1 text-sm font-semibold">
             <span>{playlist.owner?.display_name || "Unknown"}</span>
             <span className="w-1 h-1 bg-white rounded-full mx-1"></span>
             <span>{totalSongs} songs</span>
@@ -98,14 +98,14 @@ export default function PlaylistDetailsPage({
         </div>
       </div>
 
-      <div className="bg-black/20 p-6 rounded-md">
+      <div className="bg-black/20 p-3 md:p-6 rounded-md">
         <table className="w-full text-left text-neutral-400">
           <thead>
             <tr className="border-b border-neutral-700 text-sm uppercase">
               <th className="pb-3 w-12 text-center">#</th>
               <th className="pb-3">Title</th>
-              <th className="pb-3">Album</th>
-              <th className="pb-3 text-right">Duration</th>
+              <th className="pb-3 hidden md:table-cell">Album</th>
+              <th className="pb-3 text-right hidden md:table-cell">Duration</th>
               <th className="pb-3 w-12 text-right">Actions</th>
             </tr>
           </thead>

@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       }));
 
       supabase
-        .from("spotify_playlists")
+        .from("playlists")
         .upsert(rows, { onConflict: "user_id,spotify_id" })
         .then(({ error }) => {
           if (error) console.error("Error upserting playlists:", error);

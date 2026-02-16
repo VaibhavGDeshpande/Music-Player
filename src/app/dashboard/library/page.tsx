@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
 import SongRow from "@/components/SongRow";
 
 export default function LikedSongsPage() {
   const [tracks, setTracks] = useState<any[]>([]);
-  const { downloadedSongs, refreshLibrary, likedSongs, toggleLikeSong } = usePlayer();
+  const [loading, setLoading] = useState(true);
+  const { downloadedSongs, refreshLibrary, likedSongs, toggleLikeSong, likedSongsCache, refreshLikedSongsCache } = usePlayer();
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
@@ -14,21 +15,25 @@ export default function LikedSongsPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [spotifyRes, localRes] = await Promise.all([
-          fetch("/api/liked-songs").then((r) => r.json()).catch(() => null),
-          fetch("/api/user-liked-songs").then((r) => r.json()).catch(() => null),
-        ]);
+  // Fetch all pages of Spotify liked songs
+  const fetchAllSpotifyLiked = useCallback(async (): Promise<any[]> => {
+    const allTracks: any[] = [];
+    let offset = 0;
+    const limit = 50;
+    let total = Infinity;
 
-        // Normalize Spotify tracks
-        const spotifyTracks: any[] = [];
-        if (spotifyRes?.items) {
-          for (const item of spotifyRes.items) {
+    while (offset < total) {
+      try {
+        const res = await fetch(`/api/liked-songs?offset=${offset}&limit=${limit}`);
+        if (!res.ok) break;
+        const data = await res.json();
+        total = data.total || 0;
+
+        if (data.items) {
+          for (const item of data.items) {
             const t = item.track || item.item;
             if (t) {
-              spotifyTracks.push({
+              allTracks.push({
                 id: t.id,
                 name: t.name,
                 artists: t.artists,
@@ -42,10 +47,34 @@ export default function LikedSongsPage() {
           }
         }
 
+        offset += limit;
+        // Stop if no more pages
+        if (!data.next) break;
+      } catch {
+        break;
+      }
+    }
+
+    return allTracks;
+  }, []);
+
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        // Use cached local liked songs if available, otherwise fetch
+        const localSongsPromise = likedSongsCache !== null
+          ? Promise.resolve(likedSongsCache)
+          : refreshLikedSongsCache();
+
+        const [spotifyTracks, localSongs] = await Promise.all([
+          fetchAllSpotifyLiked(),
+          localSongsPromise,
+        ]);
+
         // Normalize local DB tracks
         const localTracks: any[] = [];
-        if (localRes?.songs) {
-          for (const s of localRes.songs) {
+        if (localSongs && localSongs.length > 0) {
+          for (const s of localSongs) {
             localTracks.push({
               id: s.spotify_id,
               name: s.title,
@@ -84,11 +113,13 @@ export default function LikedSongsPage() {
         setTracks(merged);
       } catch (err) {
         console.error("Error fetching liked songs:", err);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchAll();
-  }, []);
+  }, [fetchAllSpotifyLiked, likedSongsCache, refreshLikedSongsCache]);
 
   const handleDownload = async (track: any) => {
     if (downloadedSongs.has(track.id)) return;
@@ -136,47 +167,57 @@ export default function LikedSongsPage() {
           Liked Songs
         </h1>
         <p className="text-sm text-neutral-400">
-          {tracks.length} songs
+          {loading ? "Loading..." : `${tracks.length} songs`}
         </p>
       </div>
     </div>
 
-    {/* DESKTOP TABLE */}
-    <div className="hidden md:block bg-black/20 p-6 rounded-md overflow-hidden">
-      <table className="w-full text-left text-neutral-400 text-sm">
-        <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
-          <tr>
-            <th className="pb-3 w-12 text-center">#</th>
-            <th className="pb-3">Title</th>
-            <th className="pb-3">Album</th>
-            <th className="pb-3 text-right">Duration</th>
-            <th className="pb-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tracks.map((track, index) => (
-            <SongRow
-              key={track.id + index}
-              track={track}
-              index={index}
-              onDownload={handleDownload}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    {loading ? (
+      <div className="text-neutral-400 text-center py-10">Loading your liked songs...</div>
+    ) : (
+      <>
+        {/* DESKTOP TABLE */}
+        <div className="hidden md:block bg-black/20 p-6 rounded-md overflow-hidden">
+          <table className="w-full text-left text-neutral-400 text-sm">
+            <thead className="border-b border-neutral-700 uppercase text-xs tracking-wider">
+              <tr>
+                <th className="pb-3 w-12 text-center">#</th>
+                <th className="pb-3">Title</th>
+                <th className="pb-3">Album</th>
+                <th className="pb-3 text-right">Duration</th>
+                <th className="pb-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tracks.map((track, index) => (
+                <SongRow
+                  key={track.id + index}
+                  track={track}
+                  index={index}
+                  onDownload={handleDownload}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-    {/* MOBILE LIST */}
-    <div className="md:hidden space-y-3">
-      {tracks.map((track, index) => (
-        <SongRow
-          key={track.id + index}
-          track={track}
-          index={index}
-          onDownload={handleDownload}
-        />
-      ))}
-    </div>
+        {/* MOBILE LIST */}
+        <div className="md:hidden bg-black/20 p-3 rounded-md">
+          <table className="w-full text-left text-neutral-400 text-sm">
+            <tbody>
+              {tracks.map((track, index) => (
+                <SongRow
+                  key={track.id + index}
+                  track={track}
+                  index={index}
+                  onDownload={handleDownload}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    )}
 
     {/* Toast Notification */}
     {toast && (

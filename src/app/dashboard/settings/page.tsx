@@ -52,7 +52,7 @@ export default function SettingsPage() {
 
       <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-10 text-center md:text-left">
         <img
-          src={profile.profile_image_url || "/placeholder.png"}
+          src={profile.profile_image_url || "/placeholder.svg"}
           alt={profile.display_name}
           className="w-32 h-32 rounded-full shadow-lg object-cover border-4 border-neutral-700"
         />

@@ -151,17 +151,21 @@ export default function MyPlaylistDetailPage({
         </div>
 
           {/* Mobile List */}
-          <div className="md:hidden space-y-3">
-            {normalizedSongs.map((track, index) => (
-              <SongRow
-                key={track.id + index}
-                track={track}
-                index={index}
-                onDownload={handleDownload}
-                onRemove={handleRemove}
-                showRemoveButton={true}
-              />
-            ))}
+          <div className="md:hidden bg-black/20 p-3 rounded-md">
+            <table className="w-full text-left text-neutral-400 text-sm">
+              <tbody>
+                {normalizedSongs.map((track, index) => (
+                  <SongRow
+                    key={track.id + index}
+                    track={track}
+                    index={index}
+                    onDownload={handleDownload}
+                    onRemove={handleRemove}
+                    showRemoveButton={true}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

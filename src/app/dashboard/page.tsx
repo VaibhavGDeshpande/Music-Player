@@ -26,7 +26,7 @@ export default function DashboardPage() {
   return (
     <div className="text-white pb-32">
       {/* Hero / Greeting Section */}
-      <div className="bg-gradient-to-b from-green-900/50 to-black p-8 rounded-b-xl mb-6 pt-8">
+      <div className="bg-gradient-to-b from-green-900/50 to-black px-4 md:px-8 py-8 rounded-b-xl mb-6">
         <h1 className="text-4xl font-bold">{getGreeting()}</h1>
         <p className="text-neutral-400 mt-2">Here's your favorite music.</p>
       </div>
@@ -42,7 +42,7 @@ export default function DashboardPage() {
             >
               <div className="relative mb-4 shadow-lg rounded-md overflow-hidden">
                 <img
-                  src={playlist.images?.[0]?.url || "/placeholder.png"}
+                  src={playlist.images?.[0]?.url || "/placeholder.svg"}
                   alt={playlist.name}
                   className="w-full aspect-square object-cover"
                 />
