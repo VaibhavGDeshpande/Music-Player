@@ -113,9 +113,6 @@ export default function SongRow({
     }
   };
 
-  /* =========================
-     DOWNLOAD
-  ========================== */
 
   const handleDownloadClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -189,7 +186,7 @@ export default function SongRow({
 
   return (
     <tr
-      className="hover:bg-white/10 transition group rounded-md relative cursor-pointer"
+      className="hover:bg-white/10 transition-all duration-200 group rounded-md relative cursor-pointer row-hover"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleRowClick}  

@@ -52,6 +52,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [likedSongsCache, setLikedSongsCache] = useState<any[] | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const nextTrackRef = useRef<() => void>(() => {});
 
   // Fetch and cache my-songs
   const refreshMySongsCache = useCallback(async (): Promise<any[]> => {
@@ -98,7 +99,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audioRef.current = new Audio();
     
     const handleEnded = () => {
-        nextTrack();
+        nextTrackRef.current();
     };
 
     const handleTimeUpdate = () => {
@@ -162,16 +163,26 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     setIsPlaying(prev => !prev);
   };
 
-  const nextTrack = () => {
-    if (queue.length === 0) return;
-    const nextIndex = currentIndex + 1;
-    if (nextIndex < queue.length) {
-      setCurrentIndex(nextIndex);
-      setCurrentTrack(queue[nextIndex]);
-    } else {
-      setIsPlaying(false); // End of queue
-    }
-  };
+  const nextTrack = useCallback(() => {
+    setQueue(q => {
+      setCurrentIndex(idx => {
+        const nextIdx = idx + 1;
+        if (nextIdx < q.length) {
+          setCurrentTrack(q[nextIdx]);
+          return nextIdx;
+        } else {
+          setIsPlaying(false);
+          return idx;
+        }
+      });
+      return q;
+    });
+  }, []);
+
+  // Keep ref in sync
+  useEffect(() => {
+    nextTrackRef.current = nextTrack;
+  }, [nextTrack]);
 
   const prevTrack = () => {
     if (queue.length === 0) return;

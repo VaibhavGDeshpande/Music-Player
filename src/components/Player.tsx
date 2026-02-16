@@ -25,6 +25,7 @@ export default function Player() {
   const [showBigPlayer, setShowBigPlayer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [showDesktopLyrics, setShowDesktopLyrics] = useState(false);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState(false);
@@ -82,10 +83,10 @@ export default function Player() {
   }, [lyrics.length]);
 
   useEffect(() => {
-    if (showBigPlayer && currentTrack) {
+    if ((showBigPlayer || showDesktopLyrics) && currentTrack) {
       fetchLyrics(currentTrack.id);
     }
-  }, [showBigPlayer, currentTrack?.id, fetchLyrics]);
+  }, [showBigPlayer, showDesktopLyrics, currentTrack?.id, fetchLyrics]);
 
   // Find active lyric line index
   const activeIndex = useMemo(() => {
@@ -104,13 +105,13 @@ export default function Player() {
 
   // Auto-scroll to active lyric
   useEffect(() => {
-    if (showLyrics && activeLineRef.current && lyricsContainerRef.current) {
+    if ((showLyrics || showDesktopLyrics) && activeLineRef.current && lyricsContainerRef.current) {
       activeLineRef.current.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
     }
-  }, [activeIndex, showLyrics]);
+  }, [activeIndex, showLyrics, showDesktopLyrics]);
 
   if (!currentTrack) return null;
 
@@ -163,9 +164,18 @@ export default function Player() {
               e.stopPropagation();
               togglePlay();
             }}
-            className="text-white text-2xl focus:outline-none"
+            className="text-white text-2xl focus:outline-none active:scale-90 transition"
           >
-            {isPlaying ? "⏸" : "▶"}
+            {isPlaying ? (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" rx="1" />
+                <rect x="14" y="4" width="4" height="16" rx="1" />
+              </svg>
+            ) : (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
           </button>
           <button
             onClick={(e) => {
@@ -222,50 +232,54 @@ export default function Player() {
               /* Lyrics View */
               <div
                 ref={lyricsContainerRef}
-                className="flex-1 overflow-y-auto px-8 pt-4 pb-4 scroll-smooth"
+                className="flex-1 overflow-y-auto px-6 pt-2 pb-4 scroll-smooth"
+                style={{
+                  maskImage: "linear-gradient(to bottom, transparent 0%, black 8%, black 85%, transparent 100%)",
+                  WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 8%, black 85%, transparent 100%)",
+                }}
               >
                 {lyricsLoading ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-neutral-400 text-sm animate-pulse">Loading lyrics...</div>
+                  <div className="flex flex-col items-center justify-center h-full gap-3">
+                    <div className="w-8 h-8 border-2 border-neutral-600 border-t-green-500 rounded-full animate-spin" />
+                    <p className="text-neutral-500 text-sm">Fetching lyrics...</p>
                   </div>
                 ) : lyricsError ? (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-neutral-500 text-sm text-center">
-                      <p className="text-3xl mb-3">🎵</p>
-                      <p>No lyrics available for this track</p>
-                    </div>
+                  <div className="flex flex-col items-center justify-center h-full gap-2">
+                    <p className="text-4xl opacity-30">♪</p>
+                    <p className="text-neutral-500 text-sm">No lyrics available</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 py-8">
+                  <div className="py-12 space-y-5">
                     {lyrics.map((line, index) => {
                       const isActive = index === activeIndex;
                       const isPast = index < activeIndex;
                       const isEmpty = line.words.trim() === "";
 
                       if (isEmpty) {
-                        return <div key={index} className="h-6" />;
+                        return <div key={index} className="h-8" />;
                       }
 
                       return (
                         <p
                           key={index}
                           ref={isActive ? activeLineRef : null}
-                          onClick={() => {
-                            seek(parseInt(line.startTimeMs) / 1000);
-                          }}
-                          className={`text-xl font-bold leading-relaxed cursor-pointer transition-all duration-300 ${
+                          onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
+                          className={`text-2xl font-extrabold leading-snug cursor-pointer transition-all duration-500 ease-out ${
                             isActive
-                              ? "text-white scale-[1.02] origin-left"
+                              ? "text-white scale-[1.03] origin-left"
                               : isPast
-                              ? "text-neutral-500"
-                              : "text-neutral-600"
+                              ? "text-white/30"
+                              : "text-white/20"
                           }`}
+                          style={isActive ? {
+                            textShadow: "0 0 30px rgba(30, 215, 96, 0.3), 0 0 60px rgba(30, 215, 96, 0.1)",
+                          } : undefined}
                         >
                           {line.words}
                         </p>
                       );
                     })}
-                    <div className="h-40" /> {/* bottom spacer */}
+                    <div className="h-48" />
                   </div>
                 )}
               </div>
@@ -423,29 +437,50 @@ export default function Player() {
               isLiked ? "text-green-500" : "text-neutral-400 hover:text-white"
             }`}
           >
-            {isLiked ? "❤️" : "🤍"}
+            {isLiked ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" className="text-green-500">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            )}
           </button>
         </div>
 
         <div className="flex flex-col items-center max-w-[45%] w-full">
-          <div className="flex gap-6 mb-2">
+          <div className="flex items-center gap-5 mb-2">
             <button
               onClick={prevTrack}
-              className="hover:text-white text-neutral-400"
+              className="text-neutral-400 hover:text-white transition-colors active:scale-90"
             >
-              ⏮
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+              </svg>
             </button>
             <button
               onClick={togglePlay}
-              className="text-white bg-white/10 rounded-full p-1 hover:scale-105 transition"
+              className="w-9 h-9 bg-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
             >
-              {isPlaying ? "⏸" : "▶"}
+              {isPlaying ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#000">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#000">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              )}
             </button>
             <button
               onClick={nextTrack}
-              className="hover:text-white text-neutral-400"
+              className="text-neutral-400 hover:text-white transition-colors active:scale-90"
             >
-              ⏭
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
             </button>
           </div>
 
@@ -463,22 +498,116 @@ export default function Player() {
           </div>
         </div>
 
-        <div className="w-1/3 flex justify-end">
+        <div className="w-1/3 flex justify-end items-center gap-3 pr-2">
+          {/* Lyrics toggle */}
+          <button
+            onClick={() => setShowDesktopLyrics(!showDesktopLyrics)}
+            className={`transition hover:scale-110 p-1.5 rounded-full ${showDesktopLyrics ? "text-green-500 bg-green-500/10" : "text-neutral-400 hover:text-white"}`}
+            title="Lyrics"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      {/* Slide-up animation */}
+      {/* ============================================
+           DESKTOP LYRICS PANEL (floating above player)
+         ============================================ */}
+      {showDesktopLyrics && (
+        <div className="hidden md:block fixed bottom-[76px] right-4 left-[17rem] z-30 animate-fadeIn">
+          <div
+            ref={!showLyrics ? lyricsContainerRef : undefined}
+            className="bg-gradient-to-b from-neutral-900/98 to-black/98 backdrop-blur-2xl border border-neutral-700/50 rounded-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.5)] max-h-[500px] overflow-y-auto p-8 scroll-smooth"
+            style={{
+              maskImage: "linear-gradient(to bottom, black 0%, black 80%, transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 80%, transparent 100%)",
+            }}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-green-500">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                  </svg>
+                </div>
+                <h3 className="text-white font-bold text-lg tracking-tight">Lyrics</h3>
+              </div>
+              <button
+                onClick={() => setShowDesktopLyrics(false)}
+                className="text-neutral-500 hover:text-white transition p-1.5 rounded-full hover:bg-white/5"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+
+            {lyricsLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-8 h-8 border-2 border-neutral-700 border-t-green-500 rounded-full animate-spin" />
+                <p className="text-neutral-500 text-sm">Fetching lyrics...</p>
+              </div>
+            ) : lyricsError ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-2">
+                <p className="text-4xl opacity-20">♪</p>
+                <p className="text-neutral-600 text-sm">No lyrics available for this track</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {lyrics.map((line, index) => {
+                  const isActive = index === activeIndex;
+                  const isPast = index < activeIndex;
+                  const isEmpty = line.words.trim() === "";
+
+                  if (isEmpty) return <div key={index} className="h-5" />;
+
+                  return (
+                    <p
+                      key={index}
+                      ref={isActive ? activeLineRef : null}
+                      onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
+                      className={`text-lg font-bold leading-relaxed cursor-pointer transition-all duration-500 ease-out rounded-md px-3 py-1 -mx-3 ${
+                        isActive
+                          ? "text-green-400 bg-green-500/5 scale-[1.01] origin-left"
+                          : isPast
+                          ? "text-neutral-500 hover:text-neutral-300"
+                          : "text-neutral-700 hover:text-neutral-400"
+                      }`}
+                      style={isActive ? {
+                        textShadow: "0 0 20px rgba(30, 215, 96, 0.25)",
+                        borderLeft: "3px solid rgb(30, 215, 96)",
+                        paddingLeft: "12px",
+                      } : undefined}
+                    >
+                      {line.words}
+                    </p>
+                  );
+                })}
+                <div className="h-12" />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Animations */}
       <style jsx>{`
         @keyframes slideUp {
-          from {
-            transform: translateY(100%);
-          }
-          to {
-            transform: translateY(0);
-          }
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
         }
         .animate-slideUp {
           animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(12px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.25s ease-out;
         }
       `}</style>
     </>
