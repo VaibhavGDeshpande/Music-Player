@@ -238,3 +238,31 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* ===================================
+   LOGIN PAGE ANIMATIONS
+   =================================== */
+
+/* Slow floating animation for background orbs */
+@keyframes float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -30px) scale(1.05);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.95);
+  }
+}
+
+/* Spotify-green button with hover glow */
+.login-glow-btn {
+  box-shadow: 0 4px 20px rgba(29, 185, 84, 0.2);
+}
+.login-glow-btn:hover {
+  box-shadow: 0 8px 40px rgba(29, 185, 84, 0.4);
+  transform: translateY(-2px);
+}
+

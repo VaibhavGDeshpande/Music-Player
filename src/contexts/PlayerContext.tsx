@@ -19,6 +19,8 @@ type PlayerContextType = {
   togglePlay: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
+  isLooping: boolean;
+  toggleLoop: () => void;
   downloadedSongs: Set<string>;
   refreshLibrary: () => void;
   likedSongs: Set<string>;
@@ -27,6 +29,8 @@ type PlayerContextType = {
   currentTime: number;
   duration: number;
   seek: (time: number) => void;
+  volume: number;
+  setVolume: (v: number) => void;
   // Caching
   mySongsCache: any[] | null;
   likedSongsCache: any[] | null;
@@ -43,7 +47,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [downloadedSongs, setDownloadedSongs] = useState<Set<string>>(new Set());
   const [likedSongs, setLikedSongs] = useState<Set<string>>(new Set());
+  const [isLooping, setIsLooping] = useState(false);
 
+  const [volume, setVolumeState] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
@@ -53,6 +59,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const nextTrackRef = useRef<() => void>(() => {});
+  const isLoopingRef = useRef(false);
 
   // Fetch and cache my-songs
   const refreshMySongsCache = useCallback(async (): Promise<any[]> => {
@@ -99,7 +106,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audioRef.current = new Audio();
     
     const handleEnded = () => {
-        nextTrackRef.current();
+        if (isLoopingRef.current && audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(e => console.error(e));
+        } else {
+          nextTrackRef.current();
+        }
     };
 
     const handleTimeUpdate = () => {
@@ -137,6 +149,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentTrack]);
 
+  // Sync volume to audio element
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume]);
+
   // Effect to handle Play/Pause toggle without changing track
   useEffect(() => {
       if (audioRef.current) {
@@ -157,6 +174,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     setCurrentTrack(track);
     setIsPlaying(true);
+  };
+
+  const toggleLoop = () => {
+    setIsLooping(prev => {
+      isLoopingRef.current = !prev;
+      return !prev;
+    });
   };
 
   const togglePlay = () => {
@@ -201,6 +225,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           audioRef.current.currentTime = time;
           setCurrentTime(time);
       }
+  };
+
+  const setVolume = (v: number) => {
+      setVolumeState(Math.max(0, Math.min(1, v)));
   };
 
   // Convenience wrappers that also invalidate caches
@@ -257,7 +285,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache }}>
       {children}
     </PlayerContext.Provider>
   );

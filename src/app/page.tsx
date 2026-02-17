@@ -8,9 +8,18 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    // Auto-redirect to dashboard after splash
-    const timer = setTimeout(() => {
-      router.push("/dashboard");
+    // Check auth status, then redirect accordingly
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/me");
+        if (res.ok) {
+          router.push("/dashboard");
+        } else {
+          router.push("/login");
+        }
+      } catch {
+        router.push("/login");
+      }
     }, 2000);
     return () => clearTimeout(timer);
   }, [router]);
