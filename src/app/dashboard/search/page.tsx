@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
+import { useRouter } from "next/navigation";
 import SongRow from "@/components/SongRow";
 
 export default function SearchPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -231,6 +233,7 @@ export default function SearchPage() {
                   <div
                     key={artist.id}
                     className="bg-neutral-900/50 hover:bg-neutral-800/70 p-4 rounded-xl transition-all cursor-pointer group text-center"
+                    onClick={() => router.push(`/dashboard/artist/${artist.id}`)}
                   >
                     <div className="relative mb-4 mx-auto w-28 h-28 md:w-32 md:h-32">
                       <img
@@ -262,6 +265,7 @@ export default function SearchPage() {
                   <div
                     key={album.id}
                     className="bg-neutral-900/50 hover:bg-neutral-800/70 p-4 rounded-xl transition-all cursor-pointer group"
+                    onClick={() => router.push(`/dashboard/album/${album.id}`)}
                   >
                     <div className="relative mb-3">
                       <img
