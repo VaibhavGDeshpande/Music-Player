@@ -66,6 +66,21 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Sound Capsule Feature */}
+      <div 
+        onClick={() => router.push("/dashboard/settings/capsule")}
+        className="bg-gradient-to-r from-purple-900/80 to-blue-900/80 rounded-xl p-6 mb-8 cursor-pointer hover:scale-[1.02] transition-transform border border-white/10 relative overflow-hidden group"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-white/20 transition-colors"></div>
+        <div className="relative z-10 flex items-center justify-between">
+          <div>
+            <h3 className="text-2xl font-bold text-white mb-2">Your Sound Capsule</h3>
+            <p className="text-neutral-300">Unwrap your monthly listening stats. See your top artists and tracks.</p>
+          </div>
+          <div className="text-4xl group-hover:rotate-12 transition-transform duration-500">💊</div>
+        </div>
+      </div>
+
       <div className="bg-neutral-900/50 rounded-xl p-4 md:p-6 backdrop-blur-sm border border-neutral-800 max-w-2xl mx-auto md:mx-0">
         <h3 className="text-lg md:text-xl font-bold text-white mb-6 border-b border-neutral-800 pb-4">
           Account Details

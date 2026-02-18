@@ -7,7 +7,7 @@ type Track = {
   title: string;
   artist: string;
   cover?: string;
-  url: string; // The Supabase Storage URL
+  url: string; 
   duration?: number;
 };
 
@@ -144,7 +144,21 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (currentTrack && audioRef.current) {
         audioRef.current.src = currentTrack.url;
         audioRef.current.play()
-            .then(() => setIsPlaying(true))
+            .then(() => {
+                setIsPlaying(true);
+                // Log the play
+                fetch("/api/player/log", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        trackId: currentTrack.id,
+                        trackName: currentTrack.title,
+                        artistName: currentTrack.artist,
+                        imageUrl: currentTrack.cover,
+                        durationMs: currentTrack.duration
+                    })
+                }).catch(err => console.error("Failed to log play:", err));
+            })
             .catch(err => console.error("Playback failed:", err));
     }
   }, [currentTrack]);
