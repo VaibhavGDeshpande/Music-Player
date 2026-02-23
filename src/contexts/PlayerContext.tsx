@@ -9,6 +9,7 @@ type Track = {
   cover?: string;
   url: string; 
   duration?: number;
+  album?: string;
 };
 
 type PlayerContextType = {
@@ -61,6 +62,12 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const nextTrackRef = useRef<() => void>(() => {});
   const isLoopingRef = useRef(false);
 
+  // --- Time Tracking ---
+  const listenStartRef = useRef<number | null>(null);   // wall-clock ms when playback resumed
+  const accumulatedRef = useRef<number>(0);             // ms listened so far for currentTrack
+  const trackedTrackRef = useRef<string | null>(null);  // which track we're accumulating for
+  const flushListenTimeRef = useRef<(track?: Track | null) => void>(() => {});
+
   // Fetch and cache my-songs
   const refreshMySongsCache = useCallback(async (): Promise<any[]> => {
     try {
@@ -106,9 +113,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     audioRef.current = new Audio();
     
     const handleEnded = () => {
+        // Flush time — track finished naturally
+        // currentTrack is likely stale or we want to ensure we log usage
+        flushListenTimeRef.current();
+
         if (isLoopingRef.current && audioRef.current) {
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(e => console.error(e));
+          listenStartRef.current = Date.now(); // restart clock for loop
         } else {
           nextTrackRef.current();
         }
@@ -139,27 +151,78 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     };
   }, []); // Empty dependency array ensures this runs once on mount.
 
+  /**
+   * Sends accumulated listen time for the track that just ended/changed.
+   * Called whenever we switch tracks, pause-then-skip, or the audio ends.
+   */
+  const flushListenTime = useCallback((track: Track | null) => {
+    if (!track) return;
+
+    // If currently playing, add the time since last resume
+    if (listenStartRef.current !== null) {
+      accumulatedRef.current += Date.now() - listenStartRef.current;
+      listenStartRef.current = null;
+    }
+
+    const listenedMs = accumulatedRef.current;
+    accumulatedRef.current = 0;
+    trackedTrackRef.current = null;
+
+    if (listenedMs < 1000) return; // ignore < 1 second (accidental clicks)
+
+    fetch("/api/player/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trackId: track.id,
+        trackName: track.title,
+        artistName: track.artist,
+        albumName: track.album,
+        imageUrl: track.cover,
+        durationMs: track.duration || (audioRef.current ? Math.round(audioRef.current.duration * 1000) : null),
+        listenedMs,
+      }),
+    }).catch(err => console.error("Failed to log listen time:", err));
+  }, []);
+
+  // Update ref
+  useEffect(() => {
+    flushListenTimeRef.current = (t) => flushListenTime(t || currentTrack);
+  }, [flushListenTime, currentTrack]);
+
   // Effect to handle actual playback when currentTrack changes
   useEffect(() => {
-    if (currentTrack && audioRef.current) {
+    if (!audioRef.current) return;
+
+    // Flush time for the PREVIOUS track before switching
+    // We can't rely on 'currentTrack' in the cleanup because it might have already changed?
+    // Actually, we use trackedTrackRef to know if we need to flush something different.
+    // simpler: just flush whatever was accumulating.
+    // However, we need the track OBJECT to log. 
+    // The previous implementation used `flushListenTime(q[idx])` inside nextTrack, 
+    // but that doesn't cover clicking a song row.
+    
+    // We will rely on explicit flushing in playTrack/nextTrack/prevTrack OR 
+    // simple "if we are changing tracks, flush the OLD one". 
+    // But `currentTrack` here is the NEW one.
+    // The user provided code does: "flushListenTime(q[idx])" inside nextTrack.
+    // Let's stick to the user's snippet logic for `useEffect` mostly.
+
+    // Reset accumulator for the new track
+    accumulatedRef.current = 0;
+    listenStartRef.current = null;
+    trackedTrackRef.current = currentTrack?.id ?? null;
+
+    if (currentTrack) {
         audioRef.current.src = currentTrack.url;
         audioRef.current.play()
             .then(() => {
                 setIsPlaying(true);
-                // Log the play
-                fetch("/api/player/log", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        trackId: currentTrack.id,
-                        trackName: currentTrack.title,
-                        artistName: currentTrack.artist,
-                        imageUrl: currentTrack.cover,
-                        durationMs: currentTrack.duration
-                    })
-                }).catch(err => console.error("Failed to log play:", err));
             })
             .catch(err => console.error("Playback failed:", err));
+        // Start the clock synchronously so it's always set,
+        // even if the play() promise hasn't resolved yet
+        listenStartRef.current = Date.now();
     }
   }, [currentTrack]);
 
@@ -170,13 +233,25 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   // Effect to handle Play/Pause toggle without changing track
   useEffect(() => {
-      if (audioRef.current) {
-          if (isPlaying) audioRef.current.play().catch(e => console.error(e));
-          else audioRef.current.pause();
+      if (!audioRef.current) return;
+      
+      if (isPlaying) {
+          audioRef.current.play().catch(e => console.error(e));
+          listenStartRef.current = Date.now(); // ← resume clock
+      } else {
+          audioRef.current.pause();
+          // ← pause clock: accumulate time so far
+          if (listenStartRef.current !== null) {
+              accumulatedRef.current += Date.now() - listenStartRef.current;
+              listenStartRef.current = null;
+          }
       }
   }, [isPlaying]);
 
   const playTrack = (track: Track, newQueue?: Track[]) => {
+    // Flush previous
+    if (currentTrack) flushListenTime(currentTrack);
+
     if (newQueue) {
       setQueue(newQueue);
       const index = newQueue.findIndex(t => t.id === track.id);
@@ -206,16 +281,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setCurrentIndex(idx => {
         const nextIdx = idx + 1;
         if (nextIdx < q.length) {
+          flushListenTime(q[idx]); // ← flush current before switching
           setCurrentTrack(q[nextIdx]);
           return nextIdx;
         } else {
+          flushListenTime(q[idx]); // flush last track
           setIsPlaying(false);
           return idx;
         }
       });
       return q;
     });
-  }, []);
+  }, [flushListenTime]);
 
   // Keep ref in sync
   useEffect(() => {
@@ -226,6 +303,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (queue.length === 0) return;
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
+      flushListenTime(queue[currentIndex]); // ← flush before going back
       setCurrentIndex(prevIndex);
       setCurrentTrack(queue[prevIndex]);
     } else {

@@ -100,59 +100,116 @@ export default function SaveToPlaylistMenu({ track, onClose }: SaveToPlaylistMen
   return (
     <div
       ref={menuRef}
-      className="absolute right-0 top-full mt-1 z-50 w-64 bg-neutral-900 border border-neutral-700 rounded-lg shadow-2xl overflow-hidden"
+      className="absolute right-0 top-full mt-2 z-50 w-72 rounded-xl overflow-hidden shadow-[0_8px_40px_rgba(0,0,0,0.6)] border border-white/8 animate-menuIn"
+      style={{ background: "rgba(18, 18, 18, 0.95)", backdropFilter: "blur(24px)" }}
     >
-      <div className="px-4 py-3 border-b border-neutral-700">
-        <p className="text-white text-sm font-semibold">Save to Playlist</p>
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-white/8 flex items-center gap-2.5">
+        <div className="w-6 h-6 rounded-md bg-green-500/15 flex items-center justify-center flex-shrink-0">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-green-400">
+            <path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/>
+          </svg>
+        </div>
+        <p className="text-white text-sm font-semibold tracking-tight">Add to Playlist</p>
       </div>
 
       {/* Create new playlist */}
-      <div className="px-3 py-2 border-b border-neutral-700">
-        <div className="flex gap-2">
+      <div className="px-3 py-2.5 border-b border-white/6">
+        <div className="flex gap-1.5">
           <input
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="New playlist name..."
-            className="flex-1 bg-neutral-800 text-white text-sm px-3 py-1.5 rounded-md outline-none focus:ring-1 focus:ring-green-500"
+            className="flex-1 bg-white/6 hover:bg-white/8 focus:bg-white/10 text-white text-sm px-3 py-2 rounded-lg outline-none focus:ring-1 focus:ring-green-500/50 placeholder-neutral-600 transition-colors"
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
           />
           <button
             onClick={handleCreate}
             disabled={creating || !newName.trim()}
-            className="text-sm bg-green-500 text-black px-3 py-1.5 rounded-md font-semibold hover:bg-green-400 disabled:opacity-50 transition"
+            className="flex items-center justify-center w-9 h-9 bg-green-500 hover:bg-green-400 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-black transition-all active:scale-95 flex-shrink-0"
+            title="Create playlist"
           >
-            {creating ? "..." : "+"}
+            {creating ? (
+              <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              </svg>
+            )}
           </button>
         </div>
       </div>
 
       {/* Playlist list */}
-      <div className="max-h-48 overflow-y-auto">
+      <div className="max-h-52 overflow-y-auto overscroll-contain">
         {loading ? (
-          <p className="text-neutral-400 text-sm px-4 py-3">Loading...</p>
+          <div className="flex items-center justify-center py-6 gap-2">
+            <div className="w-4 h-4 border-2 border-neutral-700 border-t-green-500 rounded-full animate-spin" />
+            <p className="text-neutral-500 text-xs">Loading playlists...</p>
+          </div>
         ) : playlists.length === 0 ? (
-          <p className="text-neutral-400 text-sm px-4 py-3">No playlists yet. Create one above!</p>
+          <div className="flex flex-col items-center justify-center py-6 gap-1 px-4 text-center">
+            <p className="text-neutral-400 text-sm font-medium">No playlists yet</p>
+            <p className="text-neutral-600 text-xs">Create one above to get started</p>
+          </div>
         ) : (
-          playlists.map((pl) => (
-            <button
-              key={pl.id}
-              onClick={() => handleAddToPlaylist(pl.id)}
-              disabled={savingTo === pl.id || savedTo.has(pl.id)}
-              className="w-full text-left px-4 py-2.5 hover:bg-neutral-800 transition flex items-center justify-between"
-            >
-              <span className="text-white text-sm truncate">{pl.name}</span>
-              {savedTo.has(pl.id) ? (
-                <span className="text-green-500 text-sm">✔</span>
-              ) : savingTo === pl.id ? (
-                <span className="text-neutral-400 text-sm animate-pulse">...</span>
-              ) : (
-                <span className="text-neutral-400 text-sm">+</span>
-              )}
-            </button>
-          ))
+          playlists.map((pl) => {
+            const isSaved = savedTo.has(pl.id);
+            const isSaving = savingTo === pl.id;
+            return (
+              <button
+                key={pl.id}
+                onClick={() => handleAddToPlaylist(pl.id)}
+                disabled={isSaving || isSaved}
+                className={`w-full text-left px-4 py-2.5 transition-colors flex items-center justify-between gap-3 group ${
+                  isSaved
+                    ? "bg-green-500/8 cursor-default"
+                    : "hover:bg-white/6 active:bg-white/10"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {/* Playlist icon */}
+                  <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${isSaved ? "bg-green-500/20" : "bg-white/6 group-hover:bg-white/10"}`}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className={isSaved ? "text-green-400" : "text-neutral-400"}>
+                      <path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/>
+                    </svg>
+                  </div>
+                  <span className={`text-sm truncate font-medium ${isSaved ? "text-green-400" : "text-white"}`}>
+                    {pl.name}
+                  </span>
+                </div>
+
+                {/* Status indicator */}
+                {isSaved ? (
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-green-400">
+                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                    </svg>
+                  </div>
+                ) : isSaving ? (
+                  <div className="w-3.5 h-3.5 border-2 border-neutral-700 border-t-green-400 rounded-full animate-spin flex-shrink-0" />
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-neutral-600 group-hover:text-neutral-300 transition-colors flex-shrink-0">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                  </svg>
+                )}
+              </button>
+            );
+          })
         )}
       </div>
+
+      {/* Animation */}
+      <style jsx>{`
+        @keyframes menuIn {
+          from { opacity: 0; transform: scale(0.95) translateY(-6px); }
+          to   { opacity: 1; transform: scale(1)    translateY(0);    }
+        }
+        .animate-menuIn {
+          animation: menuIn 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+      `}</style>
     </div>
   );
 }

@@ -14,13 +14,17 @@ export async function POST(request: NextRequest) {
     const { userId } = decoded;
 
     const body = await request.json();
-    const { trackId, trackName, artistName, albumName, imageUrl, durationMs } = body;
+    const { trackId, trackName, artistName, albumName, imageUrl, durationMs, listenedMs } = body; // ← add listenedMs
 
     if (!trackId || !trackName) {
       return NextResponse.json({ error: "Missing track details" }, { status: 400 });
     }
 
-    // Insert into play_history
+    // Only log if user actually listened for at least 1 second
+    if (listenedMs !== undefined && listenedMs < 1000) {  // ← guard: skip accidental plays
+      return NextResponse.json({ skipped: true });
+    }
+
     const { error } = await supabase
       .from("play_history")
       .insert({
@@ -31,6 +35,7 @@ export async function POST(request: NextRequest) {
         album_name: albumName,
         image_url: imageUrl,
         duration_ms: durationMs,
+        listened_ms: listenedMs ?? 0,  // ← add to insert
         played_at: new Date().toISOString(),
       });
 

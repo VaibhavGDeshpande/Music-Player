@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     const trackCounts: Record<string, { count: number; name: string; artist: string; image: string | null; id: string }> = {};
 
     history.forEach((play) => {
-      totalMs += play.duration_ms || 0;
+      totalMs += play.listened_ms || play.duration_ms || 0;
 
       // Artist Stats
       if (play.artist_name) {

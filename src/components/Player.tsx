@@ -244,17 +244,25 @@ export default function Player() {
                 }}
               >
                 {lyricsLoading ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3">
-                    <div className="w-8 h-8 border-2 border-neutral-600 border-t-green-500 rounded-full animate-spin" />
-                    <p className="text-neutral-500 text-sm">Fetching lyrics...</p>
+                  <div className="flex flex-col items-center justify-center h-full gap-4">
+                    <div className="relative w-10 h-10">
+                      <div className="absolute inset-0 rounded-full border-2 border-neutral-700" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-green-400 animate-spin" />
+                    </div>
+                    <p className="text-neutral-500 text-xs tracking-widest uppercase">Fetching lyrics</p>
                   </div>
                 ) : lyricsError ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-2">
-                    <p className="text-4xl opacity-30">♪</p>
-                    <p className="text-neutral-500 text-sm">No lyrics available</p>
+                  <div className="flex flex-col items-center justify-center h-full gap-3">
+                    <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-neutral-500">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                      </svg>
+                    </div>
+                    <p className="text-neutral-500 text-sm font-medium">No lyrics available</p>
+                    <p className="text-neutral-600 text-xs">for this track</p>
                   </div>
                 ) : (
-                  <div className="py-12 space-y-5">
+                  <div className="py-12 space-y-6">
                     {lyrics.map((line, index) => {
                       const isActive = index === activeIndex;
                       const isPast = index < activeIndex;
@@ -269,15 +277,15 @@ export default function Player() {
                           key={index}
                           ref={isActive ? activeLineRef : null}
                           onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
-                          className={`text-2xl font-extrabold leading-snug cursor-pointer transition-all duration-500 ease-out ${
+                          className={`font-extrabold leading-tight cursor-pointer transition-all duration-500 ease-out ${
                             isActive
-                              ? "text-white scale-[1.03] origin-left"
+                              ? "text-white text-3xl scale-[1.04] origin-left"
                               : isPast
-                              ? "text-white/30"
-                              : "text-white/20"
+                              ? "text-white/25 text-2xl"
+                              : "text-white/15 text-2xl"
                           }`}
                           style={isActive ? {
-                            textShadow: "0 0 30px rgba(30, 215, 96, 0.3), 0 0 60px rgba(30, 215, 96, 0.1)",
+                            textShadow: "0 0 40px rgba(30, 215, 96, 0.4), 0 2px 20px rgba(0,0,0,0.5)",
                           } : undefined}
                         >
                           {line.words}
@@ -581,78 +589,94 @@ export default function Player() {
          ============================================ */}
       {showDesktopLyrics && (
         <div className="hidden md:block fixed bottom-[76px] right-4 left-[17rem] z-30 animate-fadeIn">
+          {/* Outer wrapper clips the fade mask */}
           <div
-            ref={!showLyrics ? lyricsContainerRef : undefined}
-            className="bg-gradient-to-b from-neutral-900/98 to-black/98 backdrop-blur-2xl border border-neutral-700/50 rounded-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.5)] max-h-[500px] overflow-y-auto p-8 scroll-smooth"
+            className="max-h-[500px] rounded-2xl overflow-hidden"
             style={{
-              maskImage: "linear-gradient(to bottom, black 0%, black 80%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 80%, transparent 100%)",
+              maskImage: "linear-gradient(to bottom, transparent 0%, black 8%, black 88%, transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 8%, black 88%, transparent 100%)",
             }}
           >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-green-500">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                  </svg>
+            <div
+              ref={!showLyrics ? lyricsContainerRef : undefined}
+              className="bg-neutral-900/95 backdrop-blur-3xl border border-white/5 shadow-[0_-12px_60px_rgba(0,0,0,0.7)] max-h-[500px] overflow-y-auto scroll-smooth"
+            >
+              {/* Sticky header */}
+              <div className="sticky top-0 z-10 bg-neutral-900/90 backdrop-blur-xl px-8 pt-6 pb-4 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-green-500/15 flex items-center justify-center">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="text-green-400">
+                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-white font-bold text-base tracking-tight">Lyrics</h3>
                 </div>
-                <h3 className="text-white font-bold text-lg tracking-tight">Lyrics</h3>
+                <button
+                  onClick={() => setShowDesktopLyrics(false)}
+                  className="text-neutral-500 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/8"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
               </div>
-              <button
-                onClick={() => setShowDesktopLyrics(false)}
-                className="text-neutral-500 hover:text-white transition p-1.5 rounded-full hover:bg-white/5"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
+
+              <div className="px-8 pb-8 pt-5">
+                {lyricsLoading ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <div className="relative w-9 h-9">
+                      <div className="absolute inset-0 rounded-full border-2 border-neutral-700" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-green-400 animate-spin" />
+                    </div>
+                    <p className="text-neutral-500 text-xs tracking-widest uppercase">Fetching lyrics</p>
+                  </div>
+                ) : lyricsError ? (
+                  <div className="flex flex-col items-center justify-center py-16 gap-3">
+                    <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-neutral-600">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                      </svg>
+                    </div>
+                    <p className="text-neutral-400 text-sm font-medium">No lyrics available</p>
+                    <p className="text-neutral-600 text-xs">for this track</p>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {lyrics.map((line, index) => {
+                      const isActive = index === activeIndex;
+                      const isPast = index < activeIndex;
+                      const isEmpty = line.words.trim() === "";
+
+                      if (isEmpty) return <div key={index} className="h-4" />;
+
+                      return (
+                        <p
+                          key={index}
+                          ref={isActive ? activeLineRef : null}
+                          onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
+                          className={`font-bold leading-snug cursor-pointer transition-all duration-500 ease-out rounded-lg px-4 py-1.5 -mx-4 ${
+                            isActive
+                              ? "text-white text-xl scale-[1.02] origin-left bg-white/5"
+                              : isPast
+                              ? "text-neutral-500 text-lg hover:text-neutral-300"
+                              : "text-neutral-700 text-lg hover:text-neutral-500"
+                          }`}
+                          style={isActive ? {
+                            textShadow: "0 0 30px rgba(30, 215, 96, 0.3)",
+                            borderLeft: "2px solid rgba(30, 215, 96, 0.8)",
+                            paddingLeft: "14px",
+                          } : undefined}
+                        >
+                          {line.words}
+                        </p>
+                      );
+                    })}
+                    <div className="h-8" />
+                  </div>
+                )}
+              </div>
             </div>
-
-            {lyricsLoading ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-3">
-                <div className="w-8 h-8 border-2 border-neutral-700 border-t-green-500 rounded-full animate-spin" />
-                <p className="text-neutral-500 text-sm">Fetching lyrics...</p>
-              </div>
-            ) : lyricsError ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-2">
-                <p className="text-4xl opacity-20">♪</p>
-                <p className="text-neutral-600 text-sm">No lyrics available for this track</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {lyrics.map((line, index) => {
-                  const isActive = index === activeIndex;
-                  const isPast = index < activeIndex;
-                  const isEmpty = line.words.trim() === "";
-
-                  if (isEmpty) return <div key={index} className="h-5" />;
-
-                  return (
-                    <p
-                      key={index}
-                      ref={isActive ? activeLineRef : null}
-                      onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
-                      className={`text-lg font-bold leading-relaxed cursor-pointer transition-all duration-500 ease-out rounded-md px-3 py-1 -mx-3 ${
-                        isActive
-                          ? "text-green-400 bg-green-500/5 scale-[1.01] origin-left"
-                          : isPast
-                          ? "text-neutral-500 hover:text-neutral-300"
-                          : "text-neutral-700 hover:text-neutral-400"
-                      }`}
-                      style={isActive ? {
-                        textShadow: "0 0 20px rgba(30, 215, 96, 0.25)",
-                        borderLeft: "3px solid rgb(30, 215, 96)",
-                        paddingLeft: "12px",
-                      } : undefined}
-                    >
-                      {line.words}
-                    </p>
-                  );
-                })}
-                <div className="h-12" />
-              </div>
-            )}
           </div>
         </div>
       )}

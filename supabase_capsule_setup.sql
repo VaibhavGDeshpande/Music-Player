@@ -8,6 +8,7 @@ create table if not exists play_history (
   album_name text,
   image_url text,
   duration_ms integer,
+  listened_ms integer default 0,
   played_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

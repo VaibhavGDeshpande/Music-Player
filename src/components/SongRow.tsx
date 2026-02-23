@@ -53,6 +53,8 @@ export default function SongRow({
     artist: t.artists ? t.artists.map((a: any) => a.name).join(", ") : t.artist,
     cover: t.album?.images?.[0]?.url || t.cover_url,
     url: storageUrl,
+    duration: t.duration_ms || t.duration, 
+    album: t.album?.name || t.album,
   });
 
   const handleRowClick = async () => {
@@ -186,7 +188,7 @@ export default function SongRow({
 
   return (
     <tr
-      className="hover:bg-white/10 transition-all duration-200 group rounded-md relative cursor-pointer row-hover"
+      className={`hover:bg-white/10 transition-all duration-200 group rounded-md cursor-pointer row-hover ${showPlaylistMenu ? "relative z-50" : "relative"}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleRowClick}  
@@ -255,9 +257,16 @@ export default function SongRow({
                 e.stopPropagation();
                 setShowPlaylistMenu(!showPlaylistMenu);
               }}
-              className="text-neutral-400 hover:text-white transition hover:scale-110"
+              className={`transition hover:scale-110 p-1 rounded ${
+                showPlaylistMenu
+                  ? "text-green-400"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+              title="Add to playlist"
             >
-              ➕
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/>
+              </svg>
             </button>
           )}
 
