@@ -8,7 +8,6 @@ import {
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
-  console.log(`[Callback Debug] Received code: ${code ? code.substring(0, 5) + '...' : 'MISSING'}`);
 
   if (!code) {
     return NextResponse.json(

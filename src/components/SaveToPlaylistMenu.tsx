@@ -69,8 +69,7 @@ export default function SaveToPlaylistMenu({ track, onClose }: SaveToPlaylistMen
       if (res.ok || res.status === 409) {
         setSavedTo((prev) => new Set(prev).add(playlistId));
       }
-    } catch (err) {
-      console.error("Error adding to playlist:", err);
+    } catch {
     } finally {
       setSavingTo(null);
     }
@@ -90,8 +89,7 @@ export default function SaveToPlaylistMenu({ track, onClose }: SaveToPlaylistMen
         setPlaylists((prev) => [data.playlist, ...prev]);
         setNewName("");
       }
-    } catch (err) {
-      console.error("Error creating playlist:", err);
+    } catch {
     } finally {
       setCreating(false);
     }

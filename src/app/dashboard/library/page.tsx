@@ -111,8 +111,7 @@ export default function LikedSongsPage() {
         }
 
         setTracks(merged);
-      } catch (err) {
-        console.error("Error fetching liked songs:", err);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -144,9 +143,8 @@ export default function LikedSongsPage() {
       } else {
         showToast(`Download failed: ${data.error || "Unknown error"}`, "error");
       }
-    } catch (err) {
+    } catch {
       showToast("Error downloading song", "error");
-      console.error(err);
     }
   };
 

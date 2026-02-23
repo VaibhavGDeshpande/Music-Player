@@ -26,10 +26,8 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
         if (res.ok) {
           setAlbum(data);
         } else {
-          console.error("Failed to fetch album:", data);
         }
-      } catch (err) {
-        console.error("Error fetching album:", err);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -62,8 +60,7 @@ export default function AlbumPage({ params }: { params: Promise<{ id: string }> 
         const err = await res.json();
         showToast(`Failed to save: ${err.error || "Unknown error"}`, "error");
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       showToast("Error saving song.", "error");
     }
   };

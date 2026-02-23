@@ -36,7 +36,7 @@ export async function getAccessToken(userId: string): Promise<string | null> {
       return null;
     }
 
-    console.log("Refreshing Spotify access token for user:", userId);
+
 
     const basicAuth = Buffer.from(
       `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`

@@ -30,8 +30,7 @@ export default function SearchPage() {
       const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
       const data = await res.json();
       setResults(data);
-    } catch (err) {
-      console.error("Search failed:", err);
+    } catch {
       showToast("Search failed. Please try again.", "error");
     } finally {
       setIsSearching(false);
@@ -60,8 +59,7 @@ export default function SearchPage() {
         const err = await res.json();
         showToast(`Failed to save: ${err.error || "Unknown error"}`, "error");
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       showToast("Error saving song.", "error");
     }
   };

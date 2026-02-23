@@ -46,8 +46,7 @@ export default function MyPlaylistDetailPage({
       });
       setSongs((prev) => prev.filter((s) => s.spotify_id !== spotifyId));
       showToast(`Removed "${track.name || track.title}" from playlist`, "success");
-    } catch (err) {
-      console.error("Failed to remove song:", err);
+    } catch {
       showToast("Failed to remove song", "error");
     }
   };
@@ -74,9 +73,8 @@ export default function MyPlaylistDetailPage({
       } else {
         showToast(`Download failed: ${data.error || "Unknown error"}`, "error");
       }
-    } catch (err) {
+    } catch {
       showToast("Error downloading song", "error");
-      console.error(err);
     }
   };
 

@@ -27,8 +27,7 @@ export default function SettingsPage() {
         setProfile(data);
         setLoading(false);
       })
-      .catch((err) => {
-        console.error(err);
+      .catch(() => {
         setLoading(false);
       });
   }, []);

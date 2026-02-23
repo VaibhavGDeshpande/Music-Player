@@ -27,10 +27,8 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
         if (res.ok) {
           setArtist(data);
         } else {
-          console.error("Failed to fetch artist:", data);
         }
-      } catch (err) {
-        console.error("Error fetching artist:", err);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -63,8 +61,7 @@ export default function ArtistPage({ params }: { params: Promise<{ id: string }>
         const err = await res.json();
         showToast(`Failed to save: ${err.error || "Unknown error"}`, "error");
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
       showToast("Error saving song.", "error");
     }
   };

@@ -19,14 +19,12 @@ export default function PlaylistDetailsPage({
       .then((res) => res.json())
       .then((data) => {
         if (data.error) {
-          console.error("Failed to load playlist:", data.error);
           setPlaylist({ error: data.error });
         } else {
           setPlaylist(data);
         }
       })
-      .catch(err => {
-        console.error("Network error:", err);
+      .catch(() => {
         setPlaylist({ error: "Failed to connect to server" });
       });
   }, [id]);
@@ -71,10 +69,9 @@ export default function PlaylistDetailsPage({
       } else {
         alert("Download failed: " + (data.error || "Unknown error"));
       }
-    } catch (err) {
+    } catch {
       document.body.removeChild(startMsg);
       alert("Error downloading song");
-      console.error(err);
     }
   };
 

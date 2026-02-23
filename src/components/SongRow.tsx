@@ -110,8 +110,7 @@ export default function SongRow({
       } else {
         playTrack(clickedTrack);
       }
-    } catch (error) {
-      console.error("Playback error:", error);
+    } catch {
     }
   };
 

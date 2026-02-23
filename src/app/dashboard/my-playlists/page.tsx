@@ -42,8 +42,7 @@ export default function MyPlaylistsPage() {
         setNewDesc("");
         setShowCreate(false);
       }
-    } catch (err) {
-      console.error("Failed to create playlist:", err);
+    } catch {
     } finally {
       setCreating(false);
     }
@@ -56,8 +55,7 @@ export default function MyPlaylistsPage() {
     try {
       await fetch(`/api/user-playlists/${playlistId}`, { method: "DELETE" });
       setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
-    } catch (err) {
-      console.error("Failed to delete playlist:", err);
+    } catch {
     }
   };
 

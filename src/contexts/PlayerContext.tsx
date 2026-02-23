@@ -79,8 +79,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const ids = new Set<string>(songs.map((s: any) => s.spotify_id));
       setDownloadedSongs(ids);
       return songs;
-    } catch (err) {
-      console.error("Failed to fetch my-songs", err);
+    } catch {
       return [];
     }
   }, []);
@@ -96,8 +95,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       const ids = new Set<string>(songs.map((s: any) => s.spotify_id));
       setLikedSongs(ids);
       return songs;
-    } catch (err) {
-      console.error("Failed to fetch liked-songs", err);
+    } catch {
       return [];
     }
   }, []);
@@ -119,7 +117,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         if (isLoopingRef.current && audioRef.current) {
           audioRef.current.currentTime = 0;
-          audioRef.current.play().catch(e => console.error(e));
+          audioRef.current.play().catch(() => {});
           listenStartRef.current = Date.now(); // restart clock for loop
         } else {
           nextTrackRef.current();
@@ -182,7 +180,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         durationMs: track.duration || (audioRef.current ? Math.round(audioRef.current.duration * 1000) : null),
         listenedMs,
       }),
-    }).catch(err => console.error("Failed to log listen time:", err));
+    }).catch(() => {});
   }, []);
 
   // Update ref
@@ -190,23 +188,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     flushListenTimeRef.current = (t) => flushListenTime(t || currentTrack);
   }, [flushListenTime, currentTrack]);
 
-  // Effect to handle actual playback when currentTrack changes
+   // Effect to handle actual playback when currentTrack changes
   useEffect(() => {
     if (!audioRef.current) return;
-
-    // Flush time for the PREVIOUS track before switching
-    // We can't rely on 'currentTrack' in the cleanup because it might have already changed?
-    // Actually, we use trackedTrackRef to know if we need to flush something different.
-    // simpler: just flush whatever was accumulating.
-    // However, we need the track OBJECT to log. 
-    // The previous implementation used `flushListenTime(q[idx])` inside nextTrack, 
-    // but that doesn't cover clicking a song row.
-    
-    // We will rely on explicit flushing in playTrack/nextTrack/prevTrack OR 
-    // simple "if we are changing tracks, flush the OLD one". 
-    // But `currentTrack` here is the NEW one.
-    // The user provided code does: "flushListenTime(q[idx])" inside nextTrack.
-    // Let's stick to the user's snippet logic for `useEffect` mostly.
 
     // Reset accumulator for the new track
     accumulatedRef.current = 0;
@@ -219,7 +203,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             .then(() => {
                 setIsPlaying(true);
             })
-            .catch(err => console.error("Playback failed:", err));
+            .catch(() => {});
         // Start the clock synchronously so it's always set,
         // even if the play() promise hasn't resolved yet
         listenStartRef.current = Date.now();
@@ -236,11 +220,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (!audioRef.current) return;
       
       if (isPlaying) {
-          audioRef.current.play().catch(e => console.error(e));
-          listenStartRef.current = Date.now(); // ← resume clock
+          audioRef.current.play().catch(() => {});
+          listenStartRef.current = Date.now();
       } else {
           audioRef.current.pause();
-          // ← pause clock: accumulate time so far
           if (listenStartRef.current !== null) {
               accumulatedRef.current += Date.now() - listenStartRef.current;
               listenStartRef.current = null;
@@ -370,8 +353,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         });
         return true;
       }
-    } catch (err) {
-      console.error("Error toggling like:", err);
+    } catch {
       return isLiked;
     }
   };

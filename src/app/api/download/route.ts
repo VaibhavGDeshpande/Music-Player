@@ -31,12 +31,10 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (existingSong) {
-      console.log("Song already exists:", existingSong.title);
       return NextResponse.json({ message: "Song already downloaded", song: existingSong });
     }
 
     // 2. Fetch download link from RapidAPI
-    console.log("Fetching download link for:", finalSpotifyUrl);
     const rapidApiRes = await fetch(
       `https://spotify-downloader9.p.rapidapi.com/downloadSong?songId=${encodeURIComponent(finalSpotifyUrl)}`,
       {
@@ -65,16 +63,14 @@ export async function POST(request: NextRequest) {
 
     const { title, artist, album, cover, downloadLink } = rapidApiData.data;
 
- 
-    console.log("Downloading MP3 from:", downloadLink);
+
     const mp3Res = await fetch(downloadLink);
     if (!mp3Res.ok) {
       console.error("MP3 Fetch Error Status:", mp3Res.status);
       console.error("MP3 Fetch Error Text:", await mp3Res.text());
       return NextResponse.json({ error: "Failed to download MP3 file" }, { status: 502 });
     }
-    console.log("MP3 Content-Type:", mp3Res.headers.get("content-type"));
-    console.log("MP3 Content-Length:", mp3Res.headers.get("content-length"));
+
 
     const mp3Buffer = await mp3Res.arrayBuffer();
 
