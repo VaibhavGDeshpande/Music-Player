@@ -1,6 +1,27 @@
 import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
+import { getAccessToken } from "@/lib/spotify";
+
+/** Fetch duration_ms from Spotify for a single track. Returns 0 on failure. */
+async function fetchDurationMs(userId: string, trackId: string): Promise<number> {
+  try {
+    const accessToken = await getAccessToken(userId);
+    if (!accessToken) return 0;
+
+    const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data.duration_ms || 0;
+    }
+  } catch {
+    // Non-critical — fall back to 0
+  }
+  return 0;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -104,7 +125,7 @@ export async function POST(request: NextRequest) {
         album,
         cover_url: cover,
         storage_path: fileName,
-        duration_ms: 0, // RapidAPI doesn't seem to return duration in this endpoint
+        duration_ms: await fetchDurationMs(decoded.userId, finalTrackId),
       })
       .select()
       .single();
