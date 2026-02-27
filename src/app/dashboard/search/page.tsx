@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useRouter } from "next/navigation";
 import SongRow from "@/components/SongRow";
@@ -12,6 +12,7 @@ export default function SearchPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const { downloadedSongs, refreshLibrary, playTrack, currentTrack, isPlaying, togglePlay } = usePlayer();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
@@ -20,14 +21,12 @@ export default function SearchPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-
+  const performSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) return;
     setIsSearching(true);
     setHasSearched(true);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`);
       const data = await res.json();
       setResults(data);
     } catch {
@@ -35,6 +34,25 @@ export default function SearchPage() {
     } finally {
       setIsSearching(false);
     }
+  }, []);
+
+  // Debounced search — triggers 300ms after the user stops typing
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults(null);
+      setHasSearched(false);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => performSearch(query), 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, performSearch]);
+
+  // Immediate search on Enter key
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    performSearch(query);
   };
 
   const handleDownload = async (track: any) => {

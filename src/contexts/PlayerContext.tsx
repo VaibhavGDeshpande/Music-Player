@@ -473,43 +473,52 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   const toggleLikeSong = async (songData: any): Promise<boolean> => {
     const isLiked = likedSongs.has(songData.spotify_id);
+    const newLiked = !isLiked;
+
+    // --- Optimistic update: flip UI immediately ---
+    if (newLiked) {
+      setLikedSongs(prev => new Set(prev).add(songData.spotify_id));
+      setLikedSongsCache(prev => {
+        const newSong = {
+          spotify_id: songData.spotify_id,
+          title: songData.title,
+          artist: songData.artist,
+          album: songData.album,
+          cover_url: songData.cover_url,
+          duration_ms: songData.duration_ms,
+        };
+        return prev ? [newSong, ...prev] : [newSong];
+      });
+    } else {
+      setLikedSongs(prev => {
+        const next = new Set(prev);
+        next.delete(songData.spotify_id);
+        return next;
+      });
+      setLikedSongsCache(prev => prev ? prev.filter(s => s.spotify_id !== songData.spotify_id) : null);
+    }
+
+    // --- Fire API in background, rollback on failure ---
     try {
-      if (isLiked) {
-        await fetch("/api/user-liked-songs", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ spotify_id: songData.spotify_id }),
-        });
+      const res = await fetch("/api/user-liked-songs", {
+        method: newLiked ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newLiked ? songData : { spotify_id: songData.spotify_id }),
+      });
+      if (!res.ok) throw new Error();
+      return newLiked;
+    } catch {
+      // Rollback to previous state
+      if (newLiked) {
         setLikedSongs(prev => {
           const next = new Set(prev);
           next.delete(songData.spotify_id);
           return next;
         });
-        // Invalidate liked songs cache
         setLikedSongsCache(prev => prev ? prev.filter(s => s.spotify_id !== songData.spotify_id) : null);
-        return false;
       } else {
-        await fetch("/api/user-liked-songs", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(songData),
-        });
         setLikedSongs(prev => new Set(prev).add(songData.spotify_id));
-        // Invalidate liked songs cache — add the new song at the top
-        setLikedSongsCache(prev => {
-          const newSong = {
-            spotify_id: songData.spotify_id,
-            title: songData.title,
-            artist: songData.artist,
-            album: songData.album,
-            cover_url: songData.cover_url,
-            duration_ms: songData.duration_ms,
-          };
-          return prev ? [newSong, ...prev] : [newSong];
-        });
-        return true;
       }
-    } catch {
       return isLiked;
     }
   };

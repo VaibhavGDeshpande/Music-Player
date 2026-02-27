@@ -25,7 +25,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch songs" }, { status: 500 });
     }
 
-    return NextResponse.json({ songs });
+    return NextResponse.json({ songs }, {
+      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=120" },
+    });
   } catch (error) {
     console.error("My Songs API Error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

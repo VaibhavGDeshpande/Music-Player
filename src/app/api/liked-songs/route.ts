@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(await response.json(), { status: response.status });
     }
 
-    return NextResponse.json(await response.json());
+    return NextResponse.json(await response.json(), {
+      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=120" },
+    });
   } catch (err: any) {
     console.error("Error in /api/liked-songs:", err);
     return NextResponse.json(

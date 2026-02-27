@@ -34,7 +34,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(await response.json(), { status: response.status });
     }
 
-    return NextResponse.json(await response.json());
+    return NextResponse.json(await response.json(), {
+      headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+    });
   } catch (error) {
     console.error("Search API Error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

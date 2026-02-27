@@ -1,8 +1,10 @@
 "use client";
 
 import { usePlayer } from "@/contexts/PlayerContext";
-import { useState } from "react";
-import SaveToPlaylistMenu from "./SaveToPlaylistMenu";
+import { useState, memo } from "react";
+import dynamic from "next/dynamic";
+
+const SaveToPlaylistMenu = dynamic(() => import("./SaveToPlaylistMenu"), { ssr: false });
 
 interface SongRowProps {
   track: any;
@@ -14,7 +16,7 @@ interface SongRowProps {
   allTracks?: any[];
 }
 
-export default function SongRow({
+function SongRow({
   track,
   index,
   onDownload,
@@ -325,3 +327,5 @@ export default function SongRow({
     </tr>
   );
 }
+
+export default memo(SongRow);
