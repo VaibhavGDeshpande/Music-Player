@@ -12,6 +12,9 @@ export default function Player() {
   const {
     currentTrack,
     isPlaying,
+    isBuffering,
+    playbackError,
+    networkQuality,
     togglePlay,
     nextTrack,
     prevTrack,
@@ -24,6 +27,7 @@ export default function Player() {
     setVolume,
     likedSongs,
     toggleLikeSong,
+    retryPlayback,
   } = usePlayer();
 
   const [showBigPlayer, setShowBigPlayer] = useState(false);
@@ -171,7 +175,12 @@ export default function Player() {
             }}
             className="text-white text-2xl focus:outline-none active:scale-90 transition"
           >
-            {isPlaying ? (
+            {isBuffering ? (
+              <div className="w-6 h-6 relative">
+                <div className="absolute inset-0 rounded-full border-2 border-neutral-600" />
+                <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
+              </div>
+            ) : isPlaying ? (
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1" />
                 <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -217,7 +226,15 @@ export default function Player() {
                 Now Playing
               </p>
             </div>
-            <div className="w-10" />
+            {/* Network Quality Badge */}
+            <div className="w-10 flex justify-end">
+              {networkQuality === "slow" && (
+                <span className="text-[9px] font-bold text-yellow-400 bg-yellow-400/15 px-1.5 py-0.5 rounded-full">SLOW</span>
+              )}
+              {networkQuality === "offline" && (
+                <span className="text-[9px] font-bold text-red-400 bg-red-400/15 px-1.5 py-0.5 rounded-full">OFFLINE</span>
+              )}
+            </div>
           </div>
 
           {/* Main content — toggles between album art and lyrics */}
@@ -378,7 +395,12 @@ export default function Player() {
               onClick={togglePlay}
               className="bg-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg active:scale-95 transition"
             >
-              {isPlaying ? (
+              {isBuffering ? (
+                <div className="w-7 h-7 relative">
+                  <div className="absolute inset-0 rounded-full border-[2.5px] border-neutral-300" />
+                  <div className="absolute inset-0 rounded-full border-[2.5px] border-transparent border-t-black animate-spin" />
+                </div>
+              ) : isPlaying ? (
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="#000">
                   <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                 </svg>
@@ -482,7 +504,12 @@ export default function Player() {
               onClick={togglePlay}
               className="w-9 h-9 bg-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
             >
-              {isPlaying ? (
+              {isBuffering ? (
+                <div className="w-4 h-4 relative">
+                  <div className="absolute inset-0 rounded-full border-2 border-neutral-300" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-black animate-spin" />
+                </div>
+              ) : isPlaying ? (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="#000">
                   <rect x="6" y="4" width="4" height="16" rx="1" />
                   <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -583,6 +610,42 @@ export default function Player() {
           </div>
         </div>
       </div>
+
+      {/* Playback error banner (desktop) */}
+      {playbackError && (
+        <div className="hidden md:flex fixed bottom-[76px] left-64 right-0 z-50 px-4">
+          <div className="w-full bg-red-500/90 backdrop-blur-sm text-white text-sm font-medium px-5 py-3 rounded-t-lg flex items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2">
+              <span>⚠️</span>
+              <span>{playbackError}</span>
+              {networkQuality !== "fast" && (
+                <span className="text-xs opacity-75">({networkQuality} network)</span>
+              )}
+            </div>
+            <button
+              onClick={retryPlayback}
+              className="flex-shrink-0 bg-white/20 hover:bg-white/30 text-white text-sm font-bold px-4 py-1.5 rounded-md transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Playback error banner (mobile — in big player) */}
+      {playbackError && showBigPlayer && (
+        <div className="md:hidden fixed bottom-28 left-4 right-4 z-[101]">
+          <div className="bg-red-500/90 backdrop-blur-sm text-white text-xs font-medium px-4 py-2.5 rounded-lg flex items-center justify-between gap-2 shadow-lg">
+            <span className="truncate">{playbackError}</span>
+            <button
+              onClick={retryPlayback}
+              className="flex-shrink-0 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 rounded-md transition"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ============================================
            DESKTOP LYRICS PANEL (floating above player)

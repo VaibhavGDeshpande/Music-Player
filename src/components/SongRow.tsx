@@ -57,6 +57,32 @@ export default function SongRow({
     album: t.album?.name || t.album,
   });
 
+  /**
+   * Resolve the audio URL for a track.
+   * Downloaded → direct Supabase public URL (fast, supports Range/seeking).
+   * Not downloaded → /api/stream proxy (streams via RapidAPI on-the-fly).
+   */
+  const getAudioUrl = async (t: any): Promise<string> => {
+    if (downloadedSongs.has(t.id)) {
+      // Fetch storage_path from the download endpoint (returns existing song instantly)
+      try {
+        const r = await fetch("/api/download", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trackId: t.id }),
+        });
+        const d = await r.json();
+        if (d.song?.storage_path) {
+          return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${d.song.storage_path}`;
+        }
+      } catch {
+        // fall through to stream URL
+      }
+    }
+    // Not downloaded or lookup failed → use streaming proxy
+    return `/api/stream/${t.id}`;
+  };
+
   const handleRowClick = async () => {
     try {
       // If clicking currently playing track → toggle pause/play
@@ -65,48 +91,21 @@ export default function SongRow({
         return;
       }
 
-      // Must be downloaded first
-      if (!isDownloaded) {
-        alert("Please 'Save to Cloud' this song first to play it!");
-        return;
-      }
+      const audioUrl = await getAudioUrl(track);
+      const clickedTrack = buildTrackObj(track, audioUrl);
 
-      const res = await fetch("/api/download", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trackId: track.id }),
-      });
-
-      const data = await res.json();
-      if (!data.song) return;
-
-      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${data.song.storage_path}`;
-      const clickedTrack = buildTrackObj(track, publicUrl);
-
-      // Build queue from all downloaded tracks on this page
-      const downloadedTracks = allTracks.filter((t) => downloadedSongs.has(t.id));
-      if (downloadedTracks.length > 1) {
-        // Resolve storage URLs for all downloaded tracks in the list
-        const queue = await Promise.all(
-          downloadedTracks.map(async (t) => {
-            if (t.id === track.id) return clickedTrack;
-            try {
-              const r = await fetch("/api/download", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ trackId: t.id }),
-              });
-              const d = await r.json();
-              if (!d.song) return null;
-              const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${d.song.storage_path}`;
-              return buildTrackObj(t, url);
-            } catch {
-              return null;
-            }
-          })
-        );
-        const validQueue = queue.filter((q): q is NonNullable<typeof q> => q !== null);
-        playTrack(clickedTrack, validQueue);
+      // Build queue from ALL tracks on this page (not just downloaded)
+      if (allTracks.length > 1) {
+        const queue = allTracks.map((t) => {
+          if (t.id === track.id) return clickedTrack;
+          // Downloaded songs with a known storage_path → fast Supabase URL
+          // Otherwise → stream proxy
+          const url = (downloadedSongs.has(t.id) && t.storage_path)
+            ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${t.storage_path}`
+            : `/api/stream/${t.id}`;
+          return buildTrackObj(t, url);
+        });
+        playTrack(clickedTrack, queue);
       } else {
         playTrack(clickedTrack);
       }
@@ -119,6 +118,14 @@ export default function SongRow({
     e.stopPropagation();
     if (isDownloading) return;
 
+    // Start playing immediately via stream (don't wait for download)
+    if (!isCurrentTrack) {
+      const streamUrl = `/api/stream/${track.id}`;
+      const streamTrack = buildTrackObj(track, streamUrl);
+      playTrack(streamTrack);
+    }
+
+    // Save to Supabase in background
     try {
       setIsDownloading(true);
       await onDownload(track);
@@ -277,18 +284,28 @@ export default function SongRow({
           )}
 
           {isDownloaded ? (
-            <span className="text-green-500">✔</span>
+            <span className="text-green-500" title="Saved to Cloud">✔</span>
           ) : (
             <button
               onClick={handleDownloadClick}
               disabled={isDownloading}
-              className={`hover:text-white ${
+              className={`transition hover:scale-110 ${
                 isDownloading
                   ? "animate-pulse text-blue-400"
-                  : ""
+                  : "text-neutral-600 hover:text-white"
               }`}
+              title="Save to Cloud"
             >
-              {isDownloading ? "..." : "⬇"}
+              {isDownloading ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="animate-spin">
+                  <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" opacity="0.3"/>
+                  <path d="M20 12h2A10 10 0 0 0 12 2v2a8 8 0 0 1 8 8z"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
+                </svg>
+              )}
             </button>
           )}
 

@@ -12,9 +12,14 @@ type Track = {
   album?: string;
 };
 
+type NetworkQuality = "fast" | "slow" | "offline";
+
 type PlayerContextType = {
   currentTrack: Track | null;
   isPlaying: boolean;
+  isBuffering: boolean;
+  playbackError: string | null;
+  networkQuality: NetworkQuality;
   queue: Track[];
   playTrack: (track: Track, newQueue?: Track[]) => void;
   togglePlay: () => void;
@@ -32,6 +37,7 @@ type PlayerContextType = {
   seek: (time: number) => void;
   volume: number;
   setVolume: (v: number) => void;
+  retryPlayback: () => void;
   // Caching
   mySongsCache: any[] | null;
   likedSongsCache: any[] | null;
@@ -49,6 +55,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [downloadedSongs, setDownloadedSongs] = useState<Set<string>>(new Set());
   const [likedSongs, setLikedSongs] = useState<Set<string>>(new Set());
   const [isLooping, setIsLooping] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("fast");
 
   const [volume, setVolumeState] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
@@ -61,6 +70,48 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const nextTrackRef = useRef<() => void>(() => {});
   const isLoopingRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000;
+
+  // --- Queue Prefetching ---
+  const prefetchCacheRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  // --- Network Quality Detection ---
+  useEffect(() => {
+    const nav = navigator as any;
+    const conn = nav.connection || nav.mozConnection || nav.webkitConnection;
+
+    const detect = () => {
+      if (!navigator.onLine) {
+        setNetworkQuality("offline");
+        return;
+      }
+      if (conn) {
+        // effectiveType: 'slow-2g', '2g', '3g', '4g'
+        const etype = conn.effectiveType;
+        if (etype === "slow-2g" || etype === "2g" || etype === "3g") {
+          setNetworkQuality("slow");
+        } else {
+          setNetworkQuality("fast");
+        }
+      } else {
+        setNetworkQuality("fast"); // can't detect → assume fast
+      }
+    };
+
+    detect();
+    conn?.addEventListener?.("change", detect);
+    window.addEventListener("online", detect);
+    window.addEventListener("offline", detect);
+
+    return () => {
+      conn?.removeEventListener?.("change", detect);
+      window.removeEventListener("online", detect);
+      window.removeEventListener("offline", detect);
+    };
+  }, []);
 
   // --- Time Tracking ---
   const listenStartRef = useRef<number | null>(null);   // wall-clock ms when playback resumed
@@ -108,46 +159,87 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize Audio Element once
   useEffect(() => {
-    audioRef.current = new Audio();
+    const audio = new Audio();
+    audio.preload = "auto";
+    audioRef.current = audio;
     
     const handleEnded = () => {
-        // Flush time — track finished naturally
-        // currentTrack is likely stale or we want to ensure we log usage
         flushListenTimeRef.current();
-
         if (isLoopingRef.current && audioRef.current) {
           audioRef.current.currentTime = 0;
           audioRef.current.play().catch(() => {});
-          listenStartRef.current = Date.now(); // restart clock for loop
+          listenStartRef.current = Date.now();
         } else {
           nextTrackRef.current();
         }
     };
 
     const handleTimeUpdate = () => {
-        if (audioRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
-        }
+        if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
     };
 
     const handleLoadedMetadata = () => {
-        if (audioRef.current) {
-            setDuration(audioRef.current.duration);
-        }
+        if (audioRef.current) setDuration(audioRef.current.duration);
     };
 
-    audioRef.current.addEventListener('ended', handleEnded);
-    audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
-    audioRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
+    // --- Buffering / network event handlers ---
+    const handleWaiting = () => setIsBuffering(true);
+    const handleCanPlay = () => {
+      setIsBuffering(false);
+      setPlaybackError(null);
+      retryCountRef.current = 0;
+    };
+    const handlePlaying = () => {
+      setIsBuffering(false);
+      setPlaybackError(null);
+      retryCountRef.current = 0;
+    };
+    const handleStalled = () => setIsBuffering(true);
+
+    const handleError = () => {
+      if (!audioRef.current?.src || audioRef.current.src === window.location.href) return;
+      setIsBuffering(false);
+
+      if (retryCountRef.current < MAX_RETRIES) {
+        retryCountRef.current += 1;
+        setIsBuffering(true);
+        retryTimerRef.current = setTimeout(() => {
+          if (audioRef.current?.src) {
+            const src = audioRef.current.src;
+            audioRef.current.src = src;
+            audioRef.current.load();
+            audioRef.current.play().catch(() => {});
+          }
+        }, RETRY_DELAY_MS);
+      } else {
+        setPlaybackError("Unable to play — check your connection and try again.");
+        setIsPlaying(false);
+      }
+    };
+
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('playing', handlePlaying);
+    audio.addEventListener('stalled', handleStalled);
+    audio.addEventListener('error', handleError);
     
     return () => {
-        audioRef.current?.removeEventListener('ended', handleEnded);
-        audioRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
-        audioRef.current?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audioRef.current?.pause();
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        audio.removeEventListener('ended', handleEnded);
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+        audio.removeEventListener('waiting', handleWaiting);
+        audio.removeEventListener('canplay', handleCanPlay);
+        audio.removeEventListener('playing', handlePlaying);
+        audio.removeEventListener('stalled', handleStalled);
+        audio.removeEventListener('error', handleError);
+        audio.pause();
         audioRef.current = null;
     };
-  }, []); // Empty dependency array ensures this runs once on mount.
+  }, []);
 
   /**
    * Sends accumulated listen time for the track that just ended/changed.
@@ -197,16 +289,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     listenStartRef.current = null;
     trackedTrackRef.current = currentTrack?.id ?? null;
 
+    // Clear pending retries from previous track
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    retryCountRef.current = 0;
+    setPlaybackError(null);
+
     if (currentTrack) {
+        setIsBuffering(true);
         audioRef.current.src = currentTrack.url;
+        audioRef.current.load();
         audioRef.current.play()
-            .then(() => {
-                setIsPlaying(true);
-            })
+            .then(() => setIsPlaying(true))
             .catch(() => {});
-        // Start the clock synchronously so it's always set,
-        // even if the play() promise hasn't resolved yet
         listenStartRef.current = Date.now();
+    } else {
+        setIsBuffering(false);
     }
   }, [currentTrack]);
 
@@ -230,6 +330,50 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           }
       }
   }, [isPlaying]);
+
+  // --- Prefetch nearby queue items (adaptive to network) ---
+  useEffect(() => {
+    if (queue.length === 0 || currentIndex < 0) return;
+
+    // Adapt prefetch range based on network quality
+    const PREFETCH_RANGE = networkQuality === "fast" ? 2
+                          : networkQuality === "slow" ? 1
+                          : 0; // offline — don't prefetch
+
+    const desiredIds = new Set<string>();
+    for (let offset = -PREFETCH_RANGE; offset <= PREFETCH_RANGE; offset++) {
+      if (offset === 0) continue;
+      const idx = currentIndex + offset;
+      if (idx >= 0 && idx < queue.length) {
+        desiredIds.add(queue[idx].id);
+      }
+    }
+
+    const cache = prefetchCacheRef.current;
+
+    // Remove entries outside the current window
+    for (const [id, audio] of cache) {
+      if (!desiredIds.has(id)) {
+        audio.src = "";
+        cache.delete(id);
+      }
+    }
+
+    // Create new prefetch entries
+    for (let offset = -PREFETCH_RANGE; offset <= PREFETCH_RANGE; offset++) {
+      if (offset === 0) continue;
+      const idx = currentIndex + offset;
+      if (idx >= 0 && idx < queue.length) {
+        const track = queue[idx];
+        if (!cache.has(track.id)) {
+          const audio = new Audio();
+          audio.preload = networkQuality === "slow" ? "metadata" : "auto";
+          audio.src = track.url;
+          cache.set(track.id, audio);
+        }
+      }
+    }
+  }, [currentIndex, queue, networkQuality]);
 
   const playTrack = (track: Track, newQueue?: Track[]) => {
     // Flush previous
@@ -306,6 +450,18 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       setVolumeState(Math.max(0, Math.min(1, v)));
   };
 
+  const retryPlayback = useCallback(() => {
+    if (!audioRef.current || !currentTrack) return;
+    retryCountRef.current = 0;
+    setPlaybackError(null);
+    setIsBuffering(true);
+    audioRef.current.src = currentTrack.url;
+    audioRef.current.load();
+    audioRef.current.play()
+      .then(() => setIsPlaying(true))
+      .catch(() => {});
+  }, [currentTrack]);
+
   // Convenience wrappers that also invalidate caches
   const refreshLibrary = () => {
     refreshMySongsCache();
@@ -359,7 +515,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, queue, playTrack, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, isBuffering, playbackError, networkQuality, queue, playTrack, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, retryPlayback, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache }}>
       {children}
     </PlayerContext.Provider>
   );

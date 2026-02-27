@@ -11,7 +11,7 @@ export default function SearchPage() {
   const [results, setResults] = useState<any>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const { downloadedSongs, refreshLibrary } = usePlayer();
+  const { downloadedSongs, refreshLibrary, playTrack, currentTrack, isPlaying, togglePlay } = usePlayer();
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
@@ -154,8 +154,21 @@ export default function SearchPage() {
                   <div
                     className="bg-neutral-900/60 hover:bg-neutral-800/80 p-5 rounded-xl transition-all cursor-pointer group relative overflow-hidden"
                     onClick={() => {
-                      if (downloadedSongs.has(topTrack.id)) {
-                        handleDownload(topTrack); // triggers play logic
+                      if (currentTrack?.id === topTrack.id) {
+                        togglePlay();
+                      } else {
+                        const url = downloadedSongs.has(topTrack.id)
+                          ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${topTrack.storage_path}`
+                          : `/api/stream/${topTrack.id}`;
+                        playTrack({
+                          id: topTrack.id,
+                          title: topTrack.name,
+                          artist: topTrack.artists?.map((a: any) => a.name).join(", ") || "Unknown",
+                          cover: topTrack.album?.images?.[0]?.url,
+                          url,
+                          duration: topTrack.duration_ms,
+                          album: topTrack.album?.name,
+                        });
                       }
                     }}
                   >
