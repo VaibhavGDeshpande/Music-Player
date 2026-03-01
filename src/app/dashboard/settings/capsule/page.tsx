@@ -57,7 +57,7 @@ export default function CapsulePage() {
               <span className="text-5xl font-bold text-white">{stats.total_minutes}</span>
               <span className="text-neutral-400">min</span>
             </div>
-            <p className="text-xs text-neutral-500 mt-2">in the last 30 days</p>
+            <p className="text-xs text-neutral-500 mt-2">this month</p>
           </div>
 
           {/* Unique Songs Card */}
