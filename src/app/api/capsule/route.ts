@@ -13,18 +13,23 @@ export async function GET(request: NextRequest) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
     const { userId } = decoded;
 
-    // Default to current month
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString();
+    // Parse month and year from query params, default to current month
+    const { searchParams } = new URL(request.url);
+    const monthParam = searchParams.get("month");
+    const yearParam = searchParams.get("year");
 
-    // Fetch play history for this month
+    const now = new Date();
+    // we no longer need the 0-indexed month for JS dates
+    const queryMonth = monthParam ? parseInt(monthParam) : now.getMonth() + 1; 
+    const queryYear = yearParam ? parseInt(yearParam) : now.getFullYear();
+
+    // Fetch play history using exact strict match on month and year columns
     const { data: history, error } = await supabase
       .from("play_history")
       .select("*")
       .eq("user_id", userId)
-      .gte("played_at", startOfMonth)
-      .lte("played_at", endOfMonth);
+      .eq("month", queryMonth)
+      .eq("year", queryYear);
 
     if (error) {
       console.error("Error fetching stats:", error);

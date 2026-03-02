@@ -25,6 +25,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ skipped: true });
     }
 
+    const now = new Date();
+
     const { error } = await supabase
       .from("play_history")
       .insert({
@@ -36,7 +38,9 @@ export async function POST(request: NextRequest) {
         image_url: imageUrl,
         duration_ms: durationMs,
         listened_ms: listenedMs ?? 0,  // ← add to insert
-        played_at: new Date().toISOString(),
+        played_at: now.toISOString(),
+        month: now.getMonth() + 1,     // 1-indexed for standard usage
+        year: now.getFullYear(),
       });
 
     if (error) {

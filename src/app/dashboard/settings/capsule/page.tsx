@@ -1,15 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
-export default function CapsulePage() {
+function CapsuleContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const monthParam = searchParams.get("month");
+  const yearParam = searchParams.get("year");
+
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  // Calculate generic title based on params or fallback to "Your Monthly"
+  let displayTitle = "Your Monthly Capsule";
+  if (monthParam && yearParam) {
+     const date = new Date(parseInt(yearParam), parseInt(monthParam) - 1, 1);
+     displayTitle = date.toLocaleString('default', { month: 'long', year: 'numeric' }) + " Capsule";
+  }
+
   useEffect(() => {
-    fetch("/api/capsule")
+    let url = "/api/capsule";
+    if (monthParam && yearParam) {
+      url += `?month=${monthParam}&year=${yearParam}`;
+    }
+
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         setStats(data);
@@ -18,7 +35,7 @@ export default function CapsulePage() {
       .catch(() => {
         setLoading(false);
       });
-  }, []);
+  }, [monthParam, yearParam]);
 
   if (loading) {
     return (
@@ -35,16 +52,25 @@ export default function CapsulePage() {
   return (
     <div className="text-white pb-32 px-4 md:px-8 pt-8 bg-gradient-to-b from-purple-900/20 to-black min-h-full">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <button 
-            onClick={() => router.back()}
-            className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center hover:bg-neutral-700 transition"
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => router.back()}
+              className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center hover:bg-neutral-700 transition shrink-0"
+            >
+              ←
+            </button>
+            <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400">
+              {displayTitle}
+            </h1>
+          </div>
+          
+          <Link 
+            href="/dashboard/settings/capsules"
+            className="flex items-center gap-2 bg-purple-500/20 hover:bg-purple-500/40 text-purple-300 px-4 py-2 rounded-full transition-colors font-medium border border-purple-500/30 whitespace-nowrap self-start sm:self-auto"
           >
-            ←
-          </button>
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400">
-            Your Monthly Capsule
-          </h1>
+            🗓️ View Archive
+          </Link>
         </div>
 
         {/* Stats Grid */}
@@ -140,5 +166,17 @@ export default function CapsulePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CapsulePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center items-center h-full text-white">
+        <div className="w-10 h-10 border-3 border-neutral-600 border-t-purple-500 rounded-full animate-spin"></div>
+      </div>
+    }>
+      <CapsuleContent />
+    </Suspense>
   );
 }
