@@ -2,6 +2,10 @@
 
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import DeviceIndicator from "@/components/DeviceIndicator";
+import DeviceSelectorModal from "@/components/DeviceSelectorModal";
+import { useDeviceRegistration } from "@/hooks/useDeviceRegistration";
+import { usePlaybackSession } from "@/hooks/usePlaybackSession";
 
 type LyricLine = {
   startTimeMs: string;
@@ -31,6 +35,8 @@ export default function Player() {
   } = usePlayer();
 
   const [showBigPlayer, setShowBigPlayer] = useState(false);
+  const [showDeviceModal, setShowDeviceModal] = useState(false);
+  const [switchingDeviceId, setSwitchingDeviceId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
   const [showDesktopLyrics, setShowDesktopLyrics] = useState(false);
@@ -41,6 +47,21 @@ export default function Player() {
   const activeLineRef = useRef<HTMLParagraphElement>(null);
   const lastTrackIdRef = useRef<string | null>(null);
   const prevVolumeRef = useRef(1);
+  const lastSyncAtRef = useRef(0);
+  const lastSyncedPositionRef = useRef(0);
+  const lastBroadcastTrackRef = useRef<string | null>(null);
+  const lastBroadcastPlayRef = useRef<boolean | null>(null);
+
+  const { deviceId } = useDeviceRegistration();
+  const {
+    session,
+    devices,
+    activeDevice,
+    isThisDeviceActive,
+    remoteMode,
+    effectivePositionMs,
+    sendCommand,
+  } = usePlaybackSession(deviceId);
 
   const formatTime = (time: number) => {
     if (isNaN(time)) return "0:00";
@@ -49,22 +70,181 @@ export default function Player() {
     return `${minutes}:${seconds < 10 ? "0" : ""}${seconds}`;
   };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const isLiked = currentTrack ? likedSongs.has(currentTrack.id) : false;
+  const displayTrack = useMemo(() => {
+    if (remoteMode && session?.track_id) {
+      return {
+        id: session.track_id,
+        title: session.track_title || "Unknown track",
+        artist: session.artist_name || "Unknown artist",
+        cover: session.cover_url || "/placeholder.svg",
+        url: session.stream_url || "",
+        duration: session.duration_ms ?? undefined,
+      };
+    }
+    return currentTrack;
+  }, [remoteMode, session, currentTrack]);
+
+  const displayCurrentTime = remoteMode ? effectivePositionMs / 1000 : currentTime;
+  const displayDuration = remoteMode
+    ? (typeof session?.duration_ms === "number" ? session.duration_ms / 1000 : duration)
+    : duration;
+  const displayIsPlaying = remoteMode ? !!session?.is_playing : isPlaying;
+  const displayIsBuffering = remoteMode ? false : isBuffering;
+  const displayTrackId = displayTrack?.id;
+  const progress = displayDuration > 0 ? (displayCurrentTime / displayDuration) * 100 : 0;
+  const isLiked = displayTrack ? likedSongs.has(displayTrack.id) : false;
+
+  const sendSeekCommand = useCallback(
+    async (timeSeconds: number) => {
+      if (!deviceId) return;
+      await sendCommand({
+        type: "SEEK",
+        deviceId,
+        positionMs: Math.max(0, Math.round(timeSeconds * 1000)),
+      });
+    },
+    [deviceId, sendCommand]
+  );
+
+  const sendTogglePlayCommand = useCallback(async () => {
+    if (!deviceId) return;
+
+    if (session?.is_playing) {
+      await sendCommand({
+        type: "PAUSE",
+        deviceId,
+        positionMs: Math.round(effectivePositionMs),
+      });
+      return;
+    }
+
+    if (!displayTrack || !session) return;
+    await sendCommand({
+      type: "PLAY",
+      deviceId,
+      positionMs: Math.round(effectivePositionMs),
+      track: {
+        id: displayTrack.id,
+        title: displayTrack.title,
+        artist: displayTrack.artist,
+        cover: displayTrack.cover,
+        streamUrl: displayTrack.url,
+        durationMs: displayTrack.duration,
+      },
+    });
+  }, [deviceId, displayTrack, effectivePositionMs, sendCommand, session]);
+
+  const handleTogglePlay = useCallback(() => {
+    if (remoteMode) {
+      sendTogglePlayCommand().catch(() => {});
+      return;
+    }
+    togglePlay();
+  }, [remoteMode, sendTogglePlayCommand, togglePlay]);
+
+  const handleSeek = useCallback(
+    (time: number) => {
+      if (remoteMode) {
+        sendSeekCommand(time).catch(() => {});
+        return;
+      }
+      seek(time);
+    },
+    [remoteMode, seek, sendSeekCommand]
+  );
+
+  const handleSwitchDevice = useCallback(
+    async (targetDeviceId: string) => {
+      if (!deviceId) return;
+      setSwitchingDeviceId(targetDeviceId);
+      await sendCommand({
+        type: "SWITCH_DEVICE",
+        deviceId,
+        targetDeviceId,
+      });
+      setSwitchingDeviceId(null);
+      setShowDeviceModal(false);
+    },
+    [deviceId, sendCommand]
+  );
 
   const handleLike = async () => {
-    if (!currentTrack) return;
+    if (!displayTrack) return;
     await toggleLikeSong({
-      spotify_id: currentTrack.id,
-      title: currentTrack.title,
-      artist: currentTrack.artist,
-      cover_url: currentTrack.cover,
+      spotify_id: displayTrack.id,
+      title: displayTrack.title,
+      artist: displayTrack.artist,
+      cover_url: displayTrack.cover,
     });
   };
 
+  useEffect(() => {
+    if (remoteMode && isPlaying) {
+      togglePlay();
+    }
+  }, [remoteMode, isPlaying, togglePlay]);
+
+  useEffect(() => {
+    if (!deviceId || !isThisDeviceActive || remoteMode || !currentTrack) return;
+
+    const trackChanged = lastBroadcastTrackRef.current !== currentTrack.id;
+    const playChanged = lastBroadcastPlayRef.current !== isPlaying;
+    if (!trackChanged && !playChanged) return;
+
+    lastBroadcastTrackRef.current = currentTrack.id;
+    lastBroadcastPlayRef.current = isPlaying;
+
+    if (isPlaying) {
+      sendCommand({
+        type: "PLAY",
+        deviceId,
+        positionMs: Math.round(currentTime * 1000),
+        track: {
+          id: currentTrack.id,
+          title: currentTrack.title,
+          artist: currentTrack.artist,
+          cover: currentTrack.cover,
+          streamUrl: currentTrack.url,
+          durationMs: currentTrack.duration,
+        },
+      }).catch(() => {});
+      return;
+    }
+
+    sendCommand({
+      type: "PAUSE",
+      deviceId,
+      positionMs: Math.round(currentTime * 1000),
+    }).catch(() => {});
+  }, [
+    deviceId,
+    isThisDeviceActive,
+    remoteMode,
+    currentTrack,
+    isPlaying,
+    currentTime,
+    sendCommand,
+  ]);
+
+  useEffect(() => {
+    if (!isThisDeviceActive || !deviceId || !session || !displayTrack) return;
+    const now = Date.now();
+    const pos = Math.round(currentTime * 1000);
+    if (Math.abs(pos - lastSyncedPositionRef.current) < 1200 && now - lastSyncAtRef.current < 1200) {
+      return;
+    }
+    lastSyncAtRef.current = now;
+    lastSyncedPositionRef.current = pos;
+    sendCommand({
+      type: "SYNC_POSITION",
+      deviceId,
+      positionMs: pos,
+    }).catch(() => {});
+  }, [isThisDeviceActive, deviceId, session, displayTrack, currentTime, sendCommand]);
+
   // Fetch lyrics when track changes
   const fetchLyrics = useCallback(async (trackId: string) => {
-    if (lastTrackIdRef.current === trackId && lyrics.length > 0) return;
+    if (lastTrackIdRef.current === trackId) return;
     lastTrackIdRef.current = trackId;
     setLyricsLoading(true);
     setLyricsError(false);
@@ -89,18 +269,18 @@ export default function Player() {
     } finally {
       setLyricsLoading(false);
     }
-  }, [lyrics.length]);
+  }, []);
 
   useEffect(() => {
-    if ((showBigPlayer || showDesktopLyrics) && currentTrack) {
-      fetchLyrics(currentTrack.id);
+    if ((showBigPlayer || showDesktopLyrics) && displayTrackId) {
+      fetchLyrics(displayTrackId);
     }
-  }, [showBigPlayer, showDesktopLyrics, currentTrack?.id, fetchLyrics]);
+  }, [showBigPlayer, showDesktopLyrics, displayTrackId, fetchLyrics]);
 
   // Find active lyric line index
   const activeIndex = useMemo(() => {
     if (lyrics.length === 0) return -1;
-    const timeMs = currentTime * 1000;
+    const timeMs = displayCurrentTime * 1000;
     let idx = -1;
     for (let i = 0; i < lyrics.length; i++) {
       if (timeMs >= parseInt(lyrics[i].startTimeMs)) {
@@ -110,7 +290,7 @@ export default function Player() {
       }
     }
     return idx;
-  }, [currentTime, lyrics]);
+  }, [displayCurrentTime, lyrics]);
 
   // Auto-scroll to active lyric
   useEffect(() => {
@@ -122,7 +302,7 @@ export default function Player() {
     }
   }, [activeIndex, showLyrics, showDesktopLyrics]);
 
-  if (!currentTrack) return null;
+  if (!displayTrack) return null;
 
   return (
     <>
@@ -142,16 +322,16 @@ export default function Player() {
 
         <div className="flex items-center gap-3 flex-1 overflow-hidden mr-4">
           <img
-            src={currentTrack.cover || "/placeholder.svg"}
+            src={displayTrack.cover || "/placeholder.svg"}
             className="w-10 h-10 rounded-md object-cover flex-shrink-0"
             alt=""
           />
           <div className="overflow-hidden">
             <p className="text-sm text-white font-medium truncate">
-              {currentTrack.title}
+              {displayTrack.title}
             </p>
             <p className="text-xs text-neutral-400 truncate">
-              {currentTrack.artist}
+              {displayTrack.artist}
             </p>
           </div>
         </div>
@@ -160,9 +340,10 @@ export default function Player() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              prevTrack();
+              if (!remoteMode) prevTrack();
             }}
-            className="text-white focus:outline-none active:scale-90 transition"
+            disabled={remoteMode}
+            className="text-white focus:outline-none active:scale-90 transition disabled:opacity-50"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -171,16 +352,16 @@ export default function Player() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              togglePlay();
+              handleTogglePlay();
             }}
             className="text-white text-2xl focus:outline-none active:scale-90 transition"
           >
-            {isBuffering ? (
+            {displayIsBuffering ? (
               <div className="w-6 h-6 relative">
                 <div className="absolute inset-0 rounded-full border-2 border-neutral-600" />
                 <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white animate-spin" />
               </div>
-            ) : isPlaying ? (
+            ) : displayIsPlaying ? (
               <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                 <rect x="6" y="4" width="4" height="16" rx="1" />
                 <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -194,9 +375,10 @@ export default function Player() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              nextTrack();
+              if (!remoteMode) nextTrack();
             }}
-            className="text-white focus:outline-none active:scale-90 transition"
+            disabled={remoteMode}
+            className="text-white focus:outline-none active:scale-90 transition disabled:opacity-50"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -225,6 +407,18 @@ export default function Player() {
               <p className="text-xs text-white font-semibold mt-0.5">
                 Now Playing
               </p>
+              <button
+                onClick={() => setShowDeviceModal(true)}
+                className={`mt-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                  remoteMode
+                    ? "text-amber-300 border-amber-400/50 bg-amber-500/10"
+                    : "text-neutral-300 border-neutral-600 bg-neutral-800/40"
+                }`}
+              >
+                {remoteMode
+                  ? `Playing on ${activeDevice?.device_name || "device"}`
+                  : "Playing on This Device"}
+              </button>
             </div>
             {/* Network Quality Badge */}
             <div className="w-10 flex justify-end">
@@ -244,8 +438,8 @@ export default function Player() {
               <div className="flex-1 flex items-center justify-center px-8 pt-4">
                 <div className="w-full max-w-[340px] aspect-square rounded-lg overflow-hidden shadow-2xl">
                   <img
-                    src={currentTrack.cover || "/placeholder.svg"}
-                    alt={currentTrack.title}
+                    src={displayTrack.cover || "/placeholder.svg"}
+                    alt={displayTrack.title}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -293,7 +487,7 @@ export default function Player() {
                         <p
                           key={index}
                           ref={isActive ? activeLineRef : null}
-                          onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
+                          onClick={() => handleSeek(parseInt(line.startTimeMs) / 1000)}
                           className={`font-extrabold leading-tight cursor-pointer transition-all duration-500 ease-out ${
                             isActive
                               ? "text-white text-3xl scale-[1.04] origin-left"
@@ -321,10 +515,10 @@ export default function Player() {
             <div className="flex items-center justify-between">
               <div className="flex-1 overflow-hidden mr-4">
                 <h2 className="text-white text-xl font-bold truncate">
-                  {currentTrack.title}
+                  {displayTrack.title}
                 </h2>
                 <p className="text-neutral-400 text-sm truncate mt-0.5">
-                  {currentTrack.artist}
+                  {displayTrack.artist}
                 </p>
               </div>
               <button
@@ -346,7 +540,7 @@ export default function Player() {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const percentage = x / rect.width;
-                seek(Math.max(0, Math.min(percentage * duration, duration)));
+                handleSeek(Math.max(0, Math.min(percentage * displayDuration, displayDuration)));
               }}
               onTouchStart={() => setIsDragging(true)}
               onTouchEnd={() => setIsDragging(false)}
@@ -355,7 +549,7 @@ export default function Player() {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const x = e.touches[0].clientX - rect.left;
                 const percentage = Math.max(0, Math.min(x / rect.width, 1));
-                seek(percentage * duration);
+                handleSeek(percentage * displayDuration);
               }}
             >
               <div
@@ -366,8 +560,8 @@ export default function Player() {
               </div>
             </div>
             <div className="flex justify-between mt-2 text-xs text-neutral-400 font-medium">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
+              <span>{formatTime(displayCurrentTime)}</span>
+              <span>{formatTime(displayDuration)}</span>
             </div>
           </div>
 
@@ -382,8 +576,9 @@ export default function Player() {
 
             {/* Previous */}
             <button
-              onClick={prevTrack}
-              className="text-white active:scale-90 transition p-2"
+              onClick={remoteMode ? undefined : prevTrack}
+              disabled={remoteMode}
+              className="text-white active:scale-90 transition p-2 disabled:opacity-50"
             >
               <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
@@ -392,15 +587,15 @@ export default function Player() {
 
             {/* Play/Pause */}
             <button
-              onClick={togglePlay}
+              onClick={handleTogglePlay}
               className="bg-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg active:scale-95 transition"
             >
-              {isBuffering ? (
+              {displayIsBuffering ? (
                 <div className="w-7 h-7 relative">
                   <div className="absolute inset-0 rounded-full border-[2.5px] border-neutral-300" />
                   <div className="absolute inset-0 rounded-full border-[2.5px] border-transparent border-t-black animate-spin" />
                 </div>
-              ) : isPlaying ? (
+              ) : displayIsPlaying ? (
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="#000">
                   <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
                 </svg>
@@ -413,8 +608,9 @@ export default function Player() {
 
             {/* Next */}
             <button
-              onClick={nextTrack}
-              className="text-white active:scale-90 transition p-2"
+              onClick={remoteMode ? undefined : nextTrack}
+              disabled={remoteMode}
+              className="text-white active:scale-90 transition p-2 disabled:opacity-50"
             >
               <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
@@ -423,8 +619,9 @@ export default function Player() {
 
             {/* Repeat / Loop */}
             <button
-              onClick={toggleLoop}
-              className={`relative active:text-white transition p-2 ${isLooping ? "text-green-500" : "text-neutral-400"}`}
+              onClick={remoteMode ? undefined : toggleLoop}
+              disabled={remoteMode}
+              className={`relative active:text-white transition p-2 disabled:opacity-50 ${isLooping ? "text-green-500" : "text-neutral-400"}`}
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
@@ -460,16 +657,21 @@ export default function Player() {
       <div className="hidden md:flex fixed bottom-0 left-0 md:left-64 right-0 bg-black border-t border-neutral-800 p-4 z-40 items-center justify-between">
         <div className="flex items-center gap-4 w-1/3">
           <img
-            src={currentTrack.cover || "/placeholder.svg"}
+            src={displayTrack.cover || "/placeholder.svg"}
             className="w-14 h-14 rounded-md"
             alt=""
           />
           <div>
             <h4 className="text-white text-sm font-bold">
-              {currentTrack.title}
+              {displayTrack.title}
             </h4>
             <p className="text-neutral-400 text-xs">
-              {currentTrack.artist}
+              {displayTrack.artist}
+            </p>
+            <p className={`text-[11px] mt-0.5 ${remoteMode ? "text-amber-300" : "text-neutral-500"}`}>
+              {remoteMode
+                ? `Remote control mode • ${activeDevice?.device_name || "another device"}`
+                : "Local playback mode"}
             </p>
           </div>
           <button
@@ -490,10 +692,11 @@ export default function Player() {
           </button>
         </div>
 
-        <div className="flex flex-col items-center max-w-[45%] w-full">
+        <div className={`flex flex-col items-center max-w-[45%] w-full ${remoteMode ? "opacity-80" : ""}`}>
           <div className="flex items-center gap-5 mb-2">
             <button
-              onClick={prevTrack}
+              onClick={remoteMode ? undefined : prevTrack}
+              disabled={remoteMode}
               className="text-neutral-400 hover:text-white transition-colors active:scale-90"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -501,15 +704,15 @@ export default function Player() {
               </svg>
             </button>
             <button
-              onClick={togglePlay}
+              onClick={handleTogglePlay}
               className="w-9 h-9 bg-white rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
             >
-              {isBuffering ? (
+              {displayIsBuffering ? (
                 <div className="w-4 h-4 relative">
                   <div className="absolute inset-0 rounded-full border-2 border-neutral-300" />
                   <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-black animate-spin" />
                 </div>
-              ) : isPlaying ? (
+              ) : displayIsPlaying ? (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="#000">
                   <rect x="6" y="4" width="4" height="16" rx="1" />
                   <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -521,7 +724,8 @@ export default function Player() {
               )}
             </button>
             <button
-              onClick={nextTrack}
+              onClick={remoteMode ? undefined : nextTrack}
+              disabled={remoteMode}
               className="text-neutral-400 hover:text-white transition-colors active:scale-90"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -531,23 +735,29 @@ export default function Player() {
           </div>
 
           <div className="flex items-center gap-2 w-full text-xs text-neutral-400 font-medium">
-            <span>{formatTime(currentTime)}</span>
+            <span>{formatTime(displayCurrentTime)}</span>
             <input
               type="range"
               min={0}
-              max={duration || 0}
-              value={currentTime}
-              onChange={(e) => seek(Number(e.target.value))}
+              max={displayDuration || 0}
+              value={displayCurrentTime}
+              onChange={(e) => handleSeek(Number(e.target.value))}
               className="flex-1 accent-green-500 h-1 bg-neutral-600 rounded-lg appearance-none cursor-pointer"
             />
-            <span>{formatTime(duration)}</span>
+            <span>{formatTime(displayDuration)}</span>
           </div>
         </div>
 
         <div className="w-1/3 flex justify-end items-center gap-3 pr-2">
+          <DeviceIndicator
+            remoteMode={remoteMode}
+            activeDeviceName={activeDevice?.device_name || null}
+            onOpen={() => setShowDeviceModal(true)}
+          />
           {/* Lyrics toggle */}
           <button
-            onClick={toggleLoop}
+            onClick={remoteMode ? undefined : toggleLoop}
+            disabled={remoteMode}
             className={`relative transition hover:scale-110 p-1.5 rounded-full ${isLooping ? "text-green-500 bg-green-500/10" : "text-neutral-400 hover:text-white"}`}
             title={isLooping ? "Loop: On" : "Loop: Off"}
           >
@@ -610,6 +820,16 @@ export default function Player() {
           </div>
         </div>
       </div>
+
+      <DeviceSelectorModal
+        isOpen={showDeviceModal}
+        devices={devices}
+        activeDeviceId={session?.active_device_id || null}
+        currentDeviceId={deviceId}
+        onClose={() => setShowDeviceModal(false)}
+        onSwitch={handleSwitchDevice}
+        switchingId={switchingDeviceId}
+      />
 
       {/* Playback error banner (desktop) */}
       {playbackError && (
@@ -717,7 +937,7 @@ export default function Player() {
                         <p
                           key={index}
                           ref={isActive ? activeLineRef : null}
-                          onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
+                          onClick={() => handleSeek(parseInt(line.startTimeMs) / 1000)}
                           className={`font-bold leading-snug cursor-pointer transition-all duration-500 ease-out rounded-lg px-4 py-1.5 -mx-4 ${
                             isActive
                               ? "text-white text-xl scale-[1.02] origin-left bg-white/5"
