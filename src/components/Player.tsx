@@ -20,6 +20,8 @@ export default function Player() {
     prevTrack,
     isLooping,
     toggleLoop,
+    isShuffling,
+    toggleShuffle,
     currentTime,
     duration,
     seek,
@@ -28,12 +30,16 @@ export default function Player() {
     likedSongs,
     toggleLikeSong,
     retryPlayback,
+    queue,
+    currentIndex,
+    playTrack,
+    showDesktopLyrics,
+    setShowDesktopLyrics,
   } = usePlayer();
 
   const [showBigPlayer, setShowBigPlayer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
-  const [showDesktopLyrics, setShowDesktopLyrics] = useState(false);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState(false);
@@ -122,7 +128,47 @@ export default function Player() {
     }
   }, [activeIndex, showLyrics, showDesktopLyrics]);
 
-  if (!currentTrack) return null;
+  if (!currentTrack) {
+    // Empty player bar — always visible like Spotify
+    return (
+      <div className="hidden md:flex fixed bottom-0 left-0 right-0 bg-black border-t border-neutral-800 px-4 py-3 z-40 items-center justify-between h-[72px]">
+        {/* Empty left section */}
+        <div className="flex items-center gap-4 w-1/3">
+          <div className="w-14 h-14 rounded-md bg-neutral-800" />
+          <div>
+            <div className="w-28 h-3 bg-neutral-800 rounded mb-2" />
+            <div className="w-20 h-2.5 bg-neutral-800 rounded" />
+          </div>
+        </div>
+        {/* Empty center controls */}
+        <div className="flex flex-col items-center max-w-[45%] w-full">
+          <div className="flex items-center gap-5 mb-2">
+            <div className="text-neutral-600"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" /></svg></div>
+            <div className="text-neutral-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" /></svg></div>
+            <div className="w-9 h-9 bg-neutral-700 rounded-full flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#555"><path d="M8 5v14l11-7z" /></svg>
+            </div>
+            <div className="text-neutral-600"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg></div>
+            <div className="text-neutral-600"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" /></svg></div>
+          </div>
+          <div className="flex items-center gap-2 w-full text-xs text-neutral-600 font-medium">
+            <span>-:--</span>
+            <div className="flex-1 h-1 bg-neutral-800 rounded-full" />
+            <span>-:--</span>
+          </div>
+        </div>
+        {/* Empty right */}
+        <div className="w-1/3 flex justify-end items-center gap-3 pr-2">
+          <div className="text-neutral-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" /></svg></div>
+          <div className="text-neutral-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z" /></svg></div>
+          <div className="flex items-center gap-2 ml-1">
+            <div className="text-neutral-600"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" /></svg></div>
+            <div className="w-24 h-1 bg-neutral-800 rounded-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -279,31 +325,39 @@ export default function Player() {
                     <p className="text-neutral-600 text-xs">for this track</p>
                   </div>
                 ) : (
-                  <div className="py-12 space-y-6">
+                  <div className="py-16 space-y-4">
                     {lyrics.map((line, index) => {
                       const isActive = index === activeIndex;
                       const isPast = index < activeIndex;
                       const isEmpty = line.words.trim() === "";
 
                       if (isEmpty) {
-                        return <div key={index} className="h-8" />;
+                        return <div key={index} className="h-6" />;
                       }
+
+                      // Proximity-based opacity: lines closer to active are more visible
+                      const distance = Math.abs(index - activeIndex);
+                      const proximityOpacity = isActive ? 1 : distance <= 1 ? 0.45 : distance <= 2 ? 0.25 : distance <= 4 ? 0.15 : 0.08;
 
                       return (
                         <p
                           key={index}
                           ref={isActive ? activeLineRef : null}
                           onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
-                          className={`font-extrabold leading-tight cursor-pointer transition-all duration-500 ease-out ${
+                          className={`font-black leading-[1.15] cursor-pointer transition-all duration-700 ease-[cubic-bezier(0.25,0.1,0.25,1)] ${
                             isActive
-                              ? "text-white text-3xl scale-[1.04] origin-left"
+                              ? "text-white text-[2rem] scale-[1.02] origin-left py-1"
                               : isPast
-                              ? "text-white/25 text-2xl"
-                              : "text-white/15 text-2xl"
+                              ? `text-white text-[1.55rem]`
+                              : `text-white text-[1.55rem]`
                           }`}
-                          style={isActive ? {
-                            textShadow: "0 0 40px rgba(30, 215, 96, 0.4), 0 2px 20px rgba(0,0,0,0.5)",
-                          } : undefined}
+                          style={{
+                            opacity: isActive ? 1 : proximityOpacity,
+                            ...(isActive ? {
+                              textShadow: "0 0 60px rgba(30, 215, 96, 0.5), 0 0 120px rgba(30, 215, 96, 0.15), 0 4px 30px rgba(0,0,0,0.6)",
+                              filter: "brightness(1.15)",
+                            } : {}),
+                          }}
                         >
                           {line.words}
                         </p>
@@ -374,10 +428,16 @@ export default function Player() {
           {/* Transport Controls */}
           <div className="flex items-center justify-between px-8 mb-1">
             {/* Shuffle */}
-            <button className="text-neutral-400 active:text-white transition p-2">
+            <button
+              onClick={toggleShuffle}
+              className={`active:text-white transition p-2 ${isShuffling ? "text-green-500" : "text-neutral-400"}`}
+            >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
               </svg>
+              {isShuffling && (
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full"></span>
+              )}
             </button>
 
             {/* Previous */}
@@ -457,7 +517,7 @@ export default function Player() {
       {/* ============================================
            DESKTOP PLAYER (bottom bar)
          ============================================ */}
-      <div className="hidden md:flex fixed bottom-0 left-0 md:left-64 right-0 bg-black border-t border-neutral-800 p-4 z-40 items-center justify-between">
+      <div className="hidden md:flex fixed bottom-0 left-0 right-0 bg-black border-t border-neutral-800 p-4 z-40 items-center justify-between">
         <div className="flex items-center gap-4 w-1/3">
           <img
             src={currentTrack.cover || "/placeholder.svg"}
@@ -492,6 +552,19 @@ export default function Player() {
 
         <div className="flex flex-col items-center max-w-[45%] w-full">
           <div className="flex items-center gap-5 mb-2">
+            {/* Shuffle (desktop) */}
+            <button
+              onClick={toggleShuffle}
+              className={`relative transition hover:scale-110 p-1.5 rounded-full ${isShuffling ? "text-green-500 bg-green-500/10" : "text-neutral-400 hover:text-white"}`}
+              title={isShuffling ? "Shuffle: On" : "Shuffle: Off"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+              </svg>
+              {isShuffling && (
+                <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 bg-green-500 rounded-full"></span>
+              )}
+            </button>
             <button
               onClick={prevTrack}
               className="text-neutral-400 hover:text-white transition-colors active:scale-90"
@@ -528,6 +601,19 @@ export default function Player() {
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
             </button>
+            {/* Loop */}
+            <button
+              onClick={toggleLoop}
+              className={`relative transition hover:scale-110 p-1.5 rounded-full ${isLooping ? "text-green-500 bg-green-500/10" : "text-neutral-400 hover:text-white"}`}
+              title={isLooping ? "Loop: On" : "Loop: Off"}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+              </svg>
+              {isLooping && (
+                <span className="absolute -top-0.5 -right-0.5 text-[8px] font-black text-green-500">1</span>
+              )}
+            </button>
           </div>
 
           <div className="flex items-center gap-2 w-full text-xs text-neutral-400 font-medium">
@@ -545,19 +631,6 @@ export default function Player() {
         </div>
 
         <div className="w-1/3 flex justify-end items-center gap-3 pr-2">
-          {/* Lyrics toggle */}
-          <button
-            onClick={toggleLoop}
-            className={`relative transition hover:scale-110 p-1.5 rounded-full ${isLooping ? "text-green-500 bg-green-500/10" : "text-neutral-400 hover:text-white"}`}
-            title={isLooping ? "Loop: On" : "Loop: Off"}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
-            </svg>
-            {isLooping && (
-              <span className="absolute -top-0.5 -right-0.5 text-[8px] font-black text-green-500">1</span>
-            )}
-          </button>
           {/* Lyrics toggle */}
           <button
             onClick={() => setShowDesktopLyrics(!showDesktopLyrics)}
@@ -647,102 +720,8 @@ export default function Player() {
         </div>
       )}
 
-      {/* ============================================
-           DESKTOP LYRICS PANEL (floating above player)
-         ============================================ */}
-      {showDesktopLyrics && (
-        <div className="hidden md:block fixed bottom-[76px] right-4 left-[17rem] z-30 animate-fadeIn">
-          {/* Outer wrapper clips the fade mask */}
-          <div
-            className="max-h-[500px] rounded-2xl overflow-hidden"
-            style={{
-              maskImage: "linear-gradient(to bottom, transparent 0%, black 8%, black 88%, transparent 100%)",
-              WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 8%, black 88%, transparent 100%)",
-            }}
-          >
-            <div
-              ref={!showLyrics ? lyricsContainerRef : undefined}
-              className="bg-neutral-900/95 backdrop-blur-3xl border border-white/5 shadow-[0_-12px_60px_rgba(0,0,0,0.7)] max-h-[500px] overflow-y-auto scroll-smooth"
-            >
-              {/* Sticky header */}
-              <div className="sticky top-0 z-10 bg-neutral-900/90 backdrop-blur-xl px-8 pt-6 pb-4 border-b border-white/5 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-full bg-green-500/15 flex items-center justify-center">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="text-green-400">
-                      <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-white font-bold text-base tracking-tight">Lyrics</h3>
-                </div>
-                <button
-                  onClick={() => setShowDesktopLyrics(false)}
-                  className="text-neutral-500 hover:text-white transition-colors p-1.5 rounded-full hover:bg-white/8"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <line x1="18" y1="6" x2="6" y2="18" />
-                    <line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="px-8 pb-8 pt-5">
-                {lyricsLoading ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4">
-                    <div className="relative w-9 h-9">
-                      <div className="absolute inset-0 rounded-full border-2 border-neutral-700" />
-                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-green-400 animate-spin" />
-                    </div>
-                    <p className="text-neutral-500 text-xs tracking-widest uppercase">Fetching lyrics</p>
-                  </div>
-                ) : lyricsError ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="text-neutral-600">
-                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                      </svg>
-                    </div>
-                    <p className="text-neutral-400 text-sm font-medium">No lyrics available</p>
-                    <p className="text-neutral-600 text-xs">for this track</p>
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    {lyrics.map((line, index) => {
-                      const isActive = index === activeIndex;
-                      const isPast = index < activeIndex;
-                      const isEmpty = line.words.trim() === "";
-
-                      if (isEmpty) return <div key={index} className="h-4" />;
-
-                      return (
-                        <p
-                          key={index}
-                          ref={isActive ? activeLineRef : null}
-                          onClick={() => seek(parseInt(line.startTimeMs) / 1000)}
-                          className={`font-bold leading-snug cursor-pointer transition-all duration-500 ease-out rounded-lg px-4 py-1.5 -mx-4 ${
-                            isActive
-                              ? "text-white text-xl scale-[1.02] origin-left bg-white/5"
-                              : isPast
-                              ? "text-neutral-500 text-lg hover:text-neutral-300"
-                              : "text-neutral-700 text-lg hover:text-neutral-500"
-                          }`}
-                          style={isActive ? {
-                            textShadow: "0 0 30px rgba(30, 215, 96, 0.3)",
-                            borderLeft: "2px solid rgba(30, 215, 96, 0.8)",
-                            paddingLeft: "14px",
-                          } : undefined}
-                        >
-                          {line.words}
-                        </p>
-                      );
-                    })}
-                    <div className="h-8" />
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Floating desktop lyrics panel and queue panel removed — 
+           now handled by FullScreenLyrics and NowPlayingPanel components */}
 
       {/* Animations */}
       <style jsx>{`

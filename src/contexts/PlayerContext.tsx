@@ -21,12 +21,15 @@ type PlayerContextType = {
   playbackError: string | null;
   networkQuality: NetworkQuality;
   queue: Track[];
+  currentIndex: number;
   playTrack: (track: Track, newQueue?: Track[]) => void;
   togglePlay: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
   isLooping: boolean;
   toggleLoop: () => void;
+  isShuffling: boolean;
+  toggleShuffle: () => void;
   downloadedSongs: Set<string>;
   refreshLibrary: () => void;
   likedSongs: Set<string>;
@@ -43,6 +46,8 @@ type PlayerContextType = {
   likedSongsCache: any[] | null;
   refreshMySongsCache: () => Promise<any[]>;
   refreshLikedSongsCache: () => Promise<any[]>;
+  showDesktopLyrics: boolean;
+  setShowDesktopLyrics: (show: boolean) => void;
 };
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -55,9 +60,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [downloadedSongs, setDownloadedSongs] = useState<Set<string>>(new Set());
   const [likedSongs, setLikedSongs] = useState<Set<string>>(new Set());
   const [isLooping, setIsLooping] = useState(false);
+  const [isShuffling, setIsShuffling] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [networkQuality, setNetworkQuality] = useState<NetworkQuality>("fast");
+  const [showDesktopLyrics, setShowDesktopLyrics] = useState(false);
 
   const [volume, setVolumeState] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
@@ -70,6 +77,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const nextTrackRef = useRef<() => void>(() => {});
   const isLoopingRef = useRef(false);
+  const originalQueueRef = useRef<Track[]>([]);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const MAX_RETRIES = 3;
@@ -399,6 +407,39 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const toggleShuffle = () => {
+    setIsShuffling(prev => {
+      if (!prev) {
+        // Turning shuffle ON — save original queue, shuffle the rest
+        setQueue(q => {
+          originalQueueRef.current = q;
+          const current = q[currentIndex];
+          const rest = q.filter((_, i) => i !== currentIndex);
+          // Fisher-Yates shuffle
+          for (let i = rest.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [rest[i], rest[j]] = [rest[j], rest[i]];
+          }
+          const shuffled = [current, ...rest];
+          setCurrentIndex(0);
+          return shuffled;
+        });
+      } else {
+        // Turning shuffle OFF — restore original order
+        setQueue(() => {
+          const original = originalQueueRef.current;
+          if (original.length > 0) {
+            const idx = original.findIndex(t => t.id === currentTrack?.id);
+            setCurrentIndex(idx !== -1 ? idx : 0);
+            return original;
+          }
+          return queue;
+        });
+      }
+      return !prev;
+    });
+  };
+
   const togglePlay = () => {
     setIsPlaying(prev => !prev);
   };
@@ -524,7 +565,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, isBuffering, playbackError, networkQuality, queue, playTrack, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, retryPlayback, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, isBuffering, playbackError, networkQuality, queue, currentIndex, playTrack, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, isShuffling, toggleShuffle, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, retryPlayback, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache, showDesktopLyrics, setShowDesktopLyrics }}>
       {children}
     </PlayerContext.Provider>
   );

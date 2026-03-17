@@ -5,7 +5,7 @@ export async function GET() {
     client_id: process.env.SPOTIFY_CLIENT_ID!,
     response_type: "code",
     redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
-    scope: "user-read-email user-read-private user-library-read playlist-read-private playlist-read-collaborative",
+    scope: "user-read-email user-read-private user-library-read playlist-read-private playlist-read-collaborative user-read-recently-played user-top-read",
   });
 
   return NextResponse.redirect(
