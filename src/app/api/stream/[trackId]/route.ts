@@ -2,13 +2,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { getAccessToken } from "@/lib/spotify";
-import { create } from "youtube-dl-exec";
-import path from "path";
 
-const binaryName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
-const ytDlExec = create(
-  path.join(process.cwd(), "node_modules", "youtube-dl-exec", "bin", binaryName)
-);
+// ─── Use default export — resolves binary path automatically in prod ──────────
+import ytDlpExec from "youtube-dl-exec";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +21,27 @@ async function fetchSpotifyTrack(userId: string, trackId: string) {
   const data = await res.json();
   return {
     title: data.name as string,
-    artist: data.artists?.map((a: { name: string }) => a.name).join(", ") || "Unknown",
+    artist:
+      data.artists?.map((a: { name: string }) => a.name).join(", ") ||
+      "Unknown",
   };
+}
+
+async function resolveYtUrl(title: string, artist: string): Promise<string | null> {
+  try {
+    const ytOutput = (await ytDlpExec(`ytsearch1:${title} ${artist} audio`, {
+      dumpSingleJson: true,
+      noCheckCertificates: true,
+      noWarnings: true,
+      format: "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+      addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
+    })) as { url?: string; entries?: { url: string }[] };
+
+    return ytOutput.entries?.[0]?.url ?? ytOutput.url ?? null;
+  } catch (err) {
+    console.error("[resolveYtUrl] yt-dlp failed:", err);
+    return null;
+  }
 }
 
 export async function GET(
@@ -34,25 +49,37 @@ export async function GET(
   { params }: { params: Promise<{ trackId: string }> }
 ) {
   try {
+    // ── Auth ─────────────────────────────────────────────────────────────────
     const token = request.cookies.get("session")?.value;
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-    const { trackId } = await params;
+    let decoded: { userId: string };
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid or expired session" },
+        { status: 401 }
+      );
+    }
 
-    // The Range header is what the browser sends when seeking
-    // e.g. "Range: bytes=1024000-"
+    const { trackId } = await params;
     const rangeHeader = request.headers.get("range");
 
-    // ── Path 1: Stored in Supabase Storage ────────────────────────────────────
-    const { data: existingSong } = await supabase
+    // ── Path 1: Stored in Supabase Storage ───────────────────────────────────
+    const { data: existingSong, error: dbError } = await supabase
       .from("songs")
       .select("storage_path")
       .eq("user_id", decoded.userId)
       .eq("spotify_id", trackId)
       .single();
+
+    // PGRST116 = row not found — expected, fall through to yt-dlp
+    if (dbError && dbError.code !== "PGRST116") {
+      console.error("[stream] Supabase error:", dbError.message);
+    }
 
     if (existingSong?.storage_path) {
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${existingSong.storage_path}`;
@@ -62,9 +89,18 @@ export async function GET(
 
       const upstream = await fetch(publicUrl, { headers: fetchHeaders });
 
+      if (!upstream.ok && upstream.status !== 206) {
+        console.error("[stream] Supabase fetch failed:", upstream.status);
+        return NextResponse.json(
+          { error: "Failed to fetch stored audio" },
+          { status: 502 }
+        );
+      }
+
       const responseHeaders = new Headers();
       responseHeaders.set("Content-Type", "audio/mpeg");
       responseHeaders.set("Accept-Ranges", "bytes");
+      responseHeaders.set("Cache-Control", "private, max-age=86400"); // permanent file — cache 24h
 
       const contentLength = upstream.headers.get("content-length");
       if (contentLength) responseHeaders.set("Content-Length", contentLength);
@@ -78,61 +114,41 @@ export async function GET(
       });
     }
 
-    // ── Path 2: Resolve via yt-dlp and stream with Range support ─────────────
+    // ── Path 2: Resolve via yt-dlp ────────────────────────────────────────────
     const metadata = await fetchSpotifyTrack(decoded.userId, trackId);
     if (!metadata) {
-      return NextResponse.json({ error: "Failed to fetch Spotify metadata" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Failed to fetch Spotify metadata" },
+        { status: 404 }
+      );
     }
 
-    const searchQuery = `ytsearch1:${metadata.title} ${metadata.artist} audio`;
-    const ytOutput = await ytDlExec(searchQuery, {
-      dumpSingleJson: true,
-      noCheckCertificates: true,
-      noWarnings: true,
-      format: "bestaudio[ext=m4a]/bestaudio",
-      addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
-    }) as { url?: string; entries?: { url: string }[] };
-
-    const downloadLink = ytOutput.entries?.[0]?.url ?? ytOutput.url ?? null;
-
+    const downloadLink = await resolveYtUrl(metadata.title, metadata.artist);
     if (!downloadLink) {
-      return NextResponse.json({ error: "Could not resolve audio URL" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Could not resolve audio URL from YouTube" },
+        { status: 404 }
+      );
     }
 
-    // Forward the Range header to YouTube CDN — it supports it natively
-    const fetchHeaders: Record<string, string> = {
-      "User-Agent": "Mozilla/5.0",
-      "Referer": "https://www.youtube.com/",
-    };
-    if (rangeHeader) fetchHeaders["Range"] = rangeHeader;
-
-    const upstream = await fetch(downloadLink, { headers: fetchHeaders });
-
-    if (!upstream.ok && upstream.status !== 206) {
-      return NextResponse.json({ error: "Failed to fetch audio stream" }, { status: 502 });
-    }
-
-    const responseHeaders = new Headers();
-
-    // These three headers are what make seeking work
-    responseHeaders.set("Content-Type", "audio/mp4");   // m4a = audio/mp4
-    responseHeaders.set("Accept-Ranges", "bytes");       // tells browser: seeking is allowed
-
-    const contentLength = upstream.headers.get("content-length");
-    if (contentLength) responseHeaders.set("Content-Length", contentLength); // seek bar needs this for duration
-
-    const contentRange = upstream.headers.get("content-range");
-    if (contentRange) responseHeaders.set("Content-Range", contentRange);   // e.g. bytes 102400-204799/9000000
-
-    responseHeaders.set("Cache-Control", "no-store");
-
-    return new Response(upstream.body, {
-      status: rangeHeader ? 206 : 200,
-      headers: responseHeaders,
-    });
+    // ── REDIRECT instead of proxying ──────────────────────────────────────────
+    // Proxying the full audio through a serverless function hits the timeout
+    // limit (Vercel: 10s, hobby plan: 5s). Redirecting to the YouTube CDN URL
+    // directly solves both the timeout AND seeking — YouTube CDN supports
+    // Range requests natively so skip/seek works without any extra code.
+    return NextResponse.redirect(downloadLink, 302);
 
   } catch (error) {
-    console.error("Stream API Error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    console.error(
+      "[stream] Unhandled error:",
+      error instanceof Error ? error.message : error
+    );
+    return NextResponse.json(
+      {
+        error: "Internal Server Error",
+        detail: error instanceof Error ? error.message : "Unknown",
+      },
+      { status: 500 }
+    );
   }
 }
