@@ -2,9 +2,21 @@
 
 import { usePlayer } from "@/contexts/PlayerContext";
 import Link from "next/link";
+import { useState, useEffect } from "react";
 
 export default function NowPlayingPanel() {
-  const { currentTrack, queue, currentIndex, playTrack, likedSongs, toggleLikeSong } = usePlayer();
+  const { currentTrack, queue, currentIndex, playTrack, likedSongs, toggleLikeSong, isPlaying, togglePlay } = usePlayer();
+  const [isVideoMode, setIsVideoMode] = useState(false);
+
+  useEffect(() => {
+    setIsVideoMode(false);
+  }, [currentTrack?.id]);
+
+  useEffect(() => {
+    if (isVideoMode && isPlaying) {
+      togglePlay();
+    }
+  }, [isVideoMode]);
 
   if (!currentTrack) return null;
 
@@ -30,14 +42,55 @@ export default function NowPlayingPanel() {
           </div>
         </div>
 
-        {/* Album Art */}
+        {/* Album Art / Video Toggle */}
         <div className="px-4 pb-4">
-          <div className="rounded-lg overflow-hidden shadow-2xl">
-            <img
-              src={currentTrack.cover || "/placeholder.svg"}
-              alt={currentTrack.title}
-              className="w-full aspect-square object-cover"
-            />
+          <div className="flex justify-center mb-3">
+            <div className="bg-neutral-800 rounded-full p-1 flex items-center text-xs font-medium w-fit">
+              <button
+                onClick={() => setIsVideoMode(false)}
+                className={`px-4 py-1.5 rounded-full transition-colors ${!isVideoMode ? 'bg-neutral-600 text-white' : 'text-neutral-400 hover:text-white'}`}
+              >
+                Song
+              </button>
+              <button
+                onClick={() => setIsVideoMode(true)}
+                className={`px-4 py-1.5 rounded-full transition-colors ${isVideoMode ? 'bg-neutral-600 text-white' : 'text-neutral-400 hover:text-white'}`}
+              >
+                Video
+              </button>
+            </div>
+          </div>
+          
+          <div className="rounded-lg overflow-hidden shadow-2xl relative group bg-black aspect-square">
+            {!isVideoMode ? (
+              <>
+                <img
+                  src={currentTrack.cover || "/placeholder.svg"}
+                  alt={currentTrack.title}
+                  className="w-full aspect-square object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center pointer-events-none">
+                  <button 
+                    onClick={() => setIsVideoMode(true)}
+                    className="bg-red-600 hover:bg-red-700 text-white rounded-full p-4 shadow-xl transform hover:scale-110 transition-all pointer-events-auto flex items-center justify-center cursor-pointer"
+                    title="Watch Video"
+                  >
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M21.582,6.186c-0.23-0.86-0.908-1.538-1.768-1.768C18.254,4,12,4,12,4S5.746,4,4.186,4.418 c-0.86,0.23-1.538,0.908-1.768,1.768C2,7.746,2,12,2,12s0,4.254,0.418,5.814c0.23,0.86,0.908,1.538,1.768,1.768 C5.746,20,12,20,12,20s6.254,0,7.814-0.418c0.86-0.23,1.538-0.908,1.768-1.768C22,16.254,22,12,22,12S22,7.746,21.582,6.186z M9.996,15.005l0-6.01l5.518,3.005L9.996,15.005z"/>
+                    </svg>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <video
+                className="w-full h-full absolute inset-0 rounded-lg object-contain bg-black"
+                src={`/api/video/${currentTrack.id}`}
+                autoPlay
+                controls
+                controlsList="nodownload"
+                onError={(e) => console.error("Video stream error", e)}
+              />
+            )}
           </div>
         </div>
 
@@ -67,7 +120,6 @@ export default function NowPlayingPanel() {
         <div className="mx-4 mb-4 bg-neutral-900 rounded-lg p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-bold text-white">Credits</h4>
-            <span className="text-xs text-neutral-400 hover:text-white cursor-pointer transition-colors">Show all</span>
           </div>
           <div className="flex items-center justify-between">
             <div>

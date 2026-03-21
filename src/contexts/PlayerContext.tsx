@@ -374,6 +374,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       if (idx >= 0 && idx < queue.length) {
         const track = queue[idx];
         if (!cache.has(track.id)) {
+          // Do not prefetch proxy/streaming URLs to avoid multiple expensive API calls
+          if (track.url.includes("/api/download") || track.url.includes("/api/stream")) {
+            continue;
+          }
           const audio = new Audio();
           audio.preload = networkQuality === "slow" ? "metadata" : "auto";
           audio.src = track.url;

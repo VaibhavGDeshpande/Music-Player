@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePlayer } from "@/contexts/PlayerContext";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -134,7 +135,7 @@ export default function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl md:text-2xl font-bold hover:underline cursor-pointer">Recently Played</h2>
-            <span className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</span>
+            <Link href="/dashboard/section/recent" className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</Link>
           </div>
 
           {loadingRecent ? (
@@ -186,10 +187,10 @@ export default function DashboardPage() {
         </section>
 
         {/* Recommended For You — horizontal scroll */}
-        <section className="section-reveal">
+        {/* <section className="section-reveal">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl md:text-2xl font-bold hover:underline cursor-pointer">Made For You</h2>
-            <span className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</span>
+            <Link href="/dashboard/section/recs" className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</Link>
           </div>
 
           {loadingRecs ? (
@@ -237,13 +238,13 @@ export default function DashboardPage() {
           ) : (
             <p className="text-neutral-500 text-sm">Listen to more music to get personalized recommendations.</p>
           )}
-        </section>
+        </section> */}
 
         {/* Your Playlists — horizontal scroll */}
-        <section className="section-reveal">
+        {/* <section className="section-reveal">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl md:text-2xl font-bold hover:underline cursor-pointer">Your Playlists</h2>
-            <span className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</span>
+            <Link href="/dashboard/my-playlists" className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</Link>
           </div>
 
           {loadingPlaylists ? (
@@ -284,7 +285,7 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
-        </section>
+        </section> */}
       </div>
 
       {/* Hide scrollbar */}

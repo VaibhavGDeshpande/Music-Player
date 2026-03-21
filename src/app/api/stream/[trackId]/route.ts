@@ -2,8 +2,32 @@ import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { getAccessToken } from "@/lib/spotify";
+import { create } from "youtube-dl-exec";
+import path from "path";
+
+const binaryName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+const ytDlExec = create(
+  path.join(process.cwd(), "node_modules", "youtube-dl-exec", "bin", binaryName)
+);
 
 export const dynamic = "force-dynamic";
+
+async function fetchSpotifyTrack(userId: string, trackId: string) {
+  const accessToken = await getAccessToken(userId);
+  if (!accessToken) return null;
+
+  const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  return {
+    title: data.name as string,
+    artist: data.artists?.map((a: { name: string }) => a.name).join(", ") || "Unknown",
+  };
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,12 +39,14 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
-      userId: string;
-    };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
     const { trackId } = await params;
 
-    // 1. Check if the song is already stored in Supabase
+    // The Range header is what the browser sends when seeking
+    // e.g. "Range: bytes=1024000-"
+    const rangeHeader = request.headers.get("range");
+
+    // ── Path 1: Stored in Supabase Storage ────────────────────────────────────
     const { data: existingSong } = await supabase
       .from("songs")
       .select("storage_path")
@@ -29,23 +55,16 @@ export async function GET(
       .single();
 
     if (existingSong?.storage_path) {
-      // --- STORED SONG: proxy from Supabase Storage with Range support ---
       const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/music/${existingSong.storage_path}`;
 
-      // Forward Range header if present (for seeking)
-      const rangeHeader = request.headers.get("range");
-      const headers: Record<string, string> = {};
-      if (rangeHeader) {
-        headers["Range"] = rangeHeader;
-      }
+      const fetchHeaders: Record<string, string> = {};
+      if (rangeHeader) fetchHeaders["Range"] = rangeHeader;
 
-      const upstream = await fetch(publicUrl, { headers });
+      const upstream = await fetch(publicUrl, { headers: fetchHeaders });
 
-      // Build response headers
       const responseHeaders = new Headers();
       responseHeaders.set("Content-Type", "audio/mpeg");
       responseHeaders.set("Accept-Ranges", "bytes");
-      responseHeaders.set("Cache-Control", "public, max-age=86400");
 
       const contentLength = upstream.headers.get("content-length");
       if (contentLength) responseHeaders.set("Content-Length", contentLength);
@@ -54,73 +73,66 @@ export async function GET(
       if (contentRange) responseHeaders.set("Content-Range", contentRange);
 
       return new Response(upstream.body, {
-        status: upstream.status, // 200 or 206 (partial)
+        status: rangeHeader ? 206 : upstream.status,
         headers: responseHeaders,
       });
     }
 
-    // --- NOT STORED: stream via RapidAPI download link ---
-
-    // We need a Spotify URL for the downloader API
-    const spotifyUrl = `https://open.spotify.com/track/${trackId}`;
-
-    const rapidApiRes = await fetch(
-      `https://spotify-downloader9.p.rapidapi.com/downloadSong?songId=${encodeURIComponent(spotifyUrl)}`,
-      {
-        method: "GET",
-        headers: {
-          "X-RapidAPI-Key": process.env.SPOTIFY_DOWNLOADER_KEY!,
-          "x-rapidapi-host": "spotify-downloader9.p.rapidapi.com",
-          "x-api-host": "spotify-downloader9.p.rapidapi.com",
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!rapidApiRes.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch download link" },
-        { status: 502 }
-      );
+    // ── Path 2: Resolve via yt-dlp and stream with Range support ─────────────
+    const metadata = await fetchSpotifyTrack(decoded.userId, trackId);
+    if (!metadata) {
+      return NextResponse.json({ error: "Failed to fetch Spotify metadata" }, { status: 404 });
     }
 
-    const rapidApiData = await rapidApiRes.json();
+    const searchQuery = `ytsearch1:${metadata.title} ${metadata.artist} audio`;
+    const ytOutput = await ytDlExec(searchQuery, {
+      dumpSingleJson: true,
+      noCheckCertificates: true,
+      noWarnings: true,
+      format: "bestaudio[ext=m4a]/bestaudio",
+      addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
+    }) as { url?: string; entries?: { url: string }[] };
 
-    if (!rapidApiData.success || !rapidApiData.data?.downloadLink) {
-      return NextResponse.json(
-        { error: "Download link not found" },
-        { status: 404 }
-      );
+    const downloadLink = ytOutput.entries?.[0]?.url ?? ytOutput.url ?? null;
+
+    if (!downloadLink) {
+      return NextResponse.json({ error: "Could not resolve audio URL" }, { status: 404 });
     }
 
-    const { downloadLink } = rapidApiData.data;
+    // Forward the Range header to YouTube CDN — it supports it natively
+    const fetchHeaders: Record<string, string> = {
+      "User-Agent": "Mozilla/5.0",
+      "Referer": "https://www.youtube.com/",
+    };
+    if (rangeHeader) fetchHeaders["Range"] = rangeHeader;
 
-    // Fetch the MP3 and stream it to the client
-    const mp3Res = await fetch(downloadLink);
-    if (!mp3Res.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch MP3" },
-        { status: 502 }
-      );
+    const upstream = await fetch(downloadLink, { headers: fetchHeaders });
+
+    if (!upstream.ok && upstream.status !== 206) {
+      return NextResponse.json({ error: "Failed to fetch audio stream" }, { status: 502 });
     }
 
     const responseHeaders = new Headers();
-    responseHeaders.set("Content-Type", "audio/mpeg");
-    responseHeaders.set("Cache-Control", "no-store"); // don't cache ephemeral links
 
-    const mp3ContentLength = mp3Res.headers.get("content-length");
-    if (mp3ContentLength)
-      responseHeaders.set("Content-Length", mp3ContentLength);
+    // These three headers are what make seeking work
+    responseHeaders.set("Content-Type", "audio/mp4");   // m4a = audio/mp4
+    responseHeaders.set("Accept-Ranges", "bytes");       // tells browser: seeking is allowed
 
-    return new Response(mp3Res.body, {
-      status: 200,
+    const contentLength = upstream.headers.get("content-length");
+    if (contentLength) responseHeaders.set("Content-Length", contentLength); // seek bar needs this for duration
+
+    const contentRange = upstream.headers.get("content-range");
+    if (contentRange) responseHeaders.set("Content-Range", contentRange);   // e.g. bytes 102400-204799/9000000
+
+    responseHeaders.set("Cache-Control", "no-store");
+
+    return new Response(upstream.body, {
+      status: rangeHeader ? 206 : 200,
       headers: responseHeaders,
     });
+
   } catch (error) {
     console.error("Stream API Error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -2,25 +2,31 @@ import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { getAccessToken } from "@/lib/spotify";
+import { create } from "youtube-dl-exec";
+import path from "path";
 
-/** Fetch duration_ms from Spotify for a single track. Returns 0 on failure. */
-async function fetchDurationMs(userId: string, trackId: string): Promise<number> {
-  try {
-    const accessToken = await getAccessToken(userId);
-    if (!accessToken) return 0;
+const ytDlExec = create(path.join(process.cwd(), "node_modules", "youtube-dl-exec", "bin", "yt-dlp.exe"));
 
-    const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+/** Fetch full metadata from Spotify for a single track. */
+async function fetchSpotifyTrack(userId: string, trackId: string) {
+  const accessToken = await getAccessToken(userId);
+  if (!accessToken) return null;
 
-    if (res.ok) {
-      const data = await res.json();
-      return data.duration_ms || 0;
-    }
-  } catch {
-    // Non-critical — fall back to 0
+  const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (res.ok) {
+    const data = await res.json();
+    return {
+      title: data.name,
+      artist: data.artists?.map((a: any) => a.name).join(", ") || "Unknown",
+      album: data.album?.name || "Unknown",
+      cover: data.album?.images?.[0]?.url || "",
+      duration_ms: data.duration_ms || 0,
+    };
   }
-  return 0;
+  return null;
 }
 
 export async function POST(request: NextRequest) {
@@ -34,14 +40,11 @@ export async function POST(request: NextRequest) {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
     const { trackId, spotifyUrl } = await request.json();
 
-    // Validate inputs
     if (!trackId && !spotifyUrl) {
       return NextResponse.json({ error: "Missing trackId or spotifyUrl" }, { status: 400 });
     }
 
-    // Determine the ID to use
     const finalTrackId = trackId || spotifyUrl.split("/").pop().split("?")[0];
-    const finalSpotifyUrl = spotifyUrl || `https://open.spotify.com/track/${trackId}`;
 
     // 1. Check if song already exists for this user
     const { data: existingSong } = await supabase
@@ -55,49 +58,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Song already downloaded", song: existingSong });
     }
 
-    // 2. Fetch download link from RapidAPI
-    const rapidApiRes = await fetch(
-      `https://spotify-downloader9.p.rapidapi.com/downloadSong?songId=${encodeURIComponent(finalSpotifyUrl)}`,
-      {
-        method: "GET",
-        headers: {
-          "X-RapidAPI-Key": process.env.SPOTIFY_DOWNLOADER_KEY!,
-          "x-rapidapi-host": "spotify-downloader9.p.rapidapi.com",
-          "x-api-host": "spotify-downloader9.p.rapidapi.com", 
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!rapidApiRes.ok) {
-      const errorText = await rapidApiRes.text();
-      console.error("RapidAPI Error:", errorText);
-      return NextResponse.json({ error: "Failed to fetch download link" }, { status: 502 });
+    // 2. Fetch metadata from Spotify
+    const metadata = await fetchSpotifyTrack(decoded.userId, finalTrackId);
+    if (!metadata) {
+      return NextResponse.json({ error: "Failed to fetch Spotify metadata" }, { status: 404 });
     }
 
-    const rapidApiData = await rapidApiRes.json();
-    
-    if (!rapidApiData.success || !rapidApiData.data?.downloadLink) {
-       console.error("RapidAPI Response Invalid:", rapidApiData);
-       return NextResponse.json({ error: "Download link not found" }, { status: 404 });
+    // 3. Search and get direct URL using yt-dlp
+    const searchQuery = `ytsearch1:${metadata.title} ${metadata.artist} audio`;
+    const ytOutput = await ytDlExec(searchQuery, {
+      dumpSingleJson: true,
+      noCheckCertificates: true,
+      noWarnings: true,
+      format: "bestaudio",
+      addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"]
+    });
+
+    const downloadLink = (ytOutput as any).entries ? (ytOutput as any).entries[0].url : (ytOutput as any).url;
+    if (!downloadLink) {
+        return NextResponse.json({ error: "Audio stream not found on YouTube" }, { status: 404 });
     }
 
-    const { title, artist, album, cover, downloadLink } = rapidApiData.data;
-
-
-    const mp3Res = await fetch(downloadLink);
+    // 4. Download MP3 buffer
+    const mp3Res = await fetch(downloadLink, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!mp3Res.ok) {
-      console.error("MP3 Fetch Error Status:", mp3Res.status);
-      console.error("MP3 Fetch Error Text:", await mp3Res.text());
       return NextResponse.json({ error: "Failed to download MP3 file" }, { status: 502 });
     }
 
-
     const mp3Buffer = await mp3Res.arrayBuffer();
 
-    // 4. Upload to Supabase Storage
+    // 5. Upload to Supabase Storage
     const fileName = `${decoded.userId}/${finalTrackId}.mp3`;
-    const { data: storageData, error: storageError } = await supabase.storage
+    const { error: storageError } = await supabase.storage
       .from("music")
       .upload(fileName, mp3Buffer, {
         contentType: "audio/mpeg",
@@ -105,14 +97,8 @@ export async function POST(request: NextRequest) {
       });
 
     if (storageError) {
-      console.error("Storage Upload Error:", storageError);
       return NextResponse.json({ error: "Failed to upload to storage" }, { status: 500 });
     }
-
-    // 5. Get Public URL
-    const { data: publicUrlData } = supabase.storage
-      .from("music")
-      .getPublicUrl(fileName);
 
     // 6. Insert Metadata into Database
     const { data: song, error: dbError } = await supabase
@@ -120,18 +106,17 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: decoded.userId,
         spotify_id: finalTrackId,
-        title,
-        artist,
-        album,
-        cover_url: cover,
+        title: metadata.title,
+        artist: metadata.artist,
+        album: metadata.album,
+        cover_url: metadata.cover,
         storage_path: fileName,
-        duration_ms: await fetchDurationMs(decoded.userId, finalTrackId),
+        duration_ms: metadata.duration_ms,
       })
       .select()
       .single();
 
     if (dbError) {
-       console.error("Database Insert Error:", dbError);
        return NextResponse.json({ error: "Failed to save song metadata" }, { status: 500 });
     }
 

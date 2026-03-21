@@ -23,9 +23,38 @@ export default function MySongsPage() {
     }
   }, [mySongsCache, refreshMySongsCache]);
 
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
   // Songs from my-songs are already downloaded, so download is a no-op
   const handleDownload = async (_track: any) => {
     // already downloaded
+  };
+
+  const handleRemove = async (track: any) => {
+    if (confirm(`Are you sure you want to remove "${track.name}" from your cloud library?`)) {
+      setDeletingId(track.id);
+      try {
+        const res = await fetch("/api/my-songs", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trackId: track.id }),
+        });
+        
+        if (res.ok) {
+          refreshMySongsCache().then((data) => {
+            setSongs(data);
+            setDeletingId(null);
+          });
+        } else {
+          alert("Failed to remove song.");
+          setDeletingId(null);
+        }
+      } catch (error) {
+        console.error(error);
+        alert("An error occurred while removing the song.");
+        setDeletingId(null);
+      }
+    }
   };
 
   if (loading)
@@ -87,7 +116,9 @@ export default function MySongsPage() {
                   track={track}
                   index={index}
                   onDownload={handleDownload}
-                    allTracks={normalizedSongs}
+                  showRemoveButton={true}
+                  onRemove={handleRemove}
+                  allTracks={normalizedSongs}
                 />
               ))}
             </tbody>
@@ -104,6 +135,8 @@ export default function MySongsPage() {
                     track={track}
                     index={index}
                     onDownload={handleDownload}
+                    showRemoveButton={true}
+                    onRemove={handleRemove}
                     allTracks={normalizedSongs}
                   />
                 ))}

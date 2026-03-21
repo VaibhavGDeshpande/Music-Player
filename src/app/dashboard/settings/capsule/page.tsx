@@ -54,12 +54,12 @@ function CapsuleContent() {
       <div className="max-w-4xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
-            <button 
+            {/* <button 
               onClick={() => router.back()}
               className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center hover:bg-neutral-700 transition shrink-0"
             >
               ←
-            </button>
+            </button> */}
             <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-blue-400">
               {displayTitle}
             </h1>
