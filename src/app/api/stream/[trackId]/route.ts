@@ -48,7 +48,7 @@ async function fetchSpotifyTrack(userId: string, trackId: string) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { trackId: string } } // FIXED
+  { params }: { params: Promise<{ trackId: string }> }
 ) {
   try {
     console.log("Incoming stream request");
@@ -73,7 +73,7 @@ export async function GET(
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
-    const { trackId } = params;
+    const { trackId } = await params;
     const rangeHeader = request.headers.get("range");
 
     // ── Path 1: Supabase Storage ────────────────────────────────
