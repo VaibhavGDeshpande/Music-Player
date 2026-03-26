@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
         description: p.description || null,
         cover_url: p.images?.[0]?.url || null,
         owner_name: p.owner?.display_name || null,
-        owner_id: p.owner?.id || null,
         total_tracks: p.tracks?.total || 0,
         snapshot_id: p.snapshot_id || null,
         synced_at: new Date().toISOString(),
