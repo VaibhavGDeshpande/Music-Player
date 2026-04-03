@@ -34,10 +34,16 @@ type ResolveResult = {
   source: string | null;
   mode: "binary" | "python-module" | null;
   cookiesPath: string | null;
+  format: string | null;
 };
 
 const execFileAsync = promisify(execFile);
 const ytDlpCookiesPath = process.env.YT_DLP_COOKIES_PATH?.trim() || null;
+const ytDlpFormats = [
+  process.env.YT_DLP_FORMAT?.trim(),
+  "bestaudio[ext=m4a]/bestaudio",
+  "bestaudio/best",
+].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
 
 let ytDlExec: ReturnType<typeof create> | null = null;
 let ytDlpSource: string | null = null;
@@ -108,52 +114,67 @@ async function fetchSpotifyTrack(userId: string, trackId: string): Promise<Track
 async function resolveWithYtDlp(metadata: TrackMetadata) {
   const searchQuery = `ytsearch1:${metadata.title} ${metadata.artist} audio`;
   const cookiesPath = getResolvedCookiesPath();
-  const flags = {
-    dumpSingleJson: true,
-    noCheckCertificates: true,
-    noWarnings: true,
-    format: "bestaudio[ext=m4a]/bestaudio",
-    addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
-    ...(cookiesPath ? { cookies: cookiesPath } : {}),
-  };
+  let lastError: SpawnLikeError | null = null;
 
-  let ytOutput: YtDlpResult;
+  for (const format of ytDlpFormats) {
+    try {
+      const flags = {
+        dumpSingleJson: true,
+        noCheckCertificates: true,
+        noWarnings: true,
+        format,
+        addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
+        ...(cookiesPath ? { cookies: cookiesPath } : {}),
+      };
 
-  if (ytDlExec && ytDlpMode === "binary") {
-    ytOutput = (await ytDlExec(searchQuery, flags)) as YtDlpResult;
-  } else {
-    const args = [
-      "-m",
-      "yt_dlp",
-      searchQuery,
-      "--dump-single-json",
-      "--no-check-certificates",
-      "--no-warnings",
-      "-f",
-      "bestaudio[ext=m4a]/bestaudio",
-      "--add-header",
-      "referer:youtube.com",
-      "--add-header",
-      "user-agent:Mozilla/5.0",
-    ];
-    if (cookiesPath) {
-      args.push("--cookies", cookiesPath);
+      let ytOutput: YtDlpResult;
+
+      if (ytDlExec && ytDlpMode === "binary") {
+        ytOutput = (await ytDlExec(searchQuery, flags)) as YtDlpResult;
+      } else {
+        const args = [
+          "-m",
+          "yt_dlp",
+          searchQuery,
+          "--dump-single-json",
+          "--no-check-certificates",
+          "--no-warnings",
+          "-f",
+          format,
+          "--add-header",
+          "referer:youtube.com",
+          "--add-header",
+          "user-agent:Mozilla/5.0",
+        ];
+        if (cookiesPath) {
+          args.push("--cookies", cookiesPath);
+        }
+
+        const result = (await execFileAsync("python", args, {
+          windowsHide: true,
+          maxBuffer: 10 * 1024 * 1024,
+        })) as ExecFileResult;
+
+        ytOutput = JSON.parse(result.stdout) as YtDlpResult;
+      }
+
+      return {
+        url: ytOutput?.entries?.[0]?.url ?? ytOutput?.url ?? null,
+        source: ytDlpSource,
+        mode: ytDlpMode,
+        cookiesPath,
+        format,
+      } as ResolveResult;
+    } catch (error) {
+      lastError = error as SpawnLikeError;
+      const details = lastError.stderr || lastError.message || "";
+      if (!details.includes("Requested format is not available")) {
+        throw error;
+      }
     }
-
-    const result = (await execFileAsync("python", args, {
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024,
-    })) as ExecFileResult;
-
-    ytOutput = JSON.parse(result.stdout) as YtDlpResult;
   }
 
-  return {
-    url: ytOutput?.entries?.[0]?.url ?? ytOutput?.url ?? null,
-    source: ytDlpSource,
-    mode: ytDlpMode,
-    cookiesPath,
-  } as ResolveResult;
+  throw lastError ?? new Error("yt-dlp did not find a playable format");
 }
 
 export async function GET(
@@ -239,6 +260,7 @@ export async function GET(
       source: ytDlpSource,
       mode: ytDlpMode,
       cookiesPath: getResolvedCookiesPath(),
+      format: null,
     };
 
     try {
@@ -267,6 +289,7 @@ export async function GET(
               source: ytDlpSource,
               mode: ytDlpMode,
               cookiesPath: getResolvedCookiesPath(),
+              format: resolveResult.format,
             },
             { status: 500 }
           );
@@ -280,6 +303,7 @@ export async function GET(
             source: ytDlpSource,
             mode: ytDlpMode,
             cookiesPath: getResolvedCookiesPath(),
+            format: resolveResult.format,
           },
           { status: 502 }
         );
@@ -296,6 +320,7 @@ export async function GET(
           source: resolveResult.source,
           mode: resolveResult.mode,
           cookiesPath: resolveResult.cookiesPath,
+          format: resolveResult.format,
         },
         { status: 502 }
       );
