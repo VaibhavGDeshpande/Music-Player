@@ -42,6 +42,7 @@ type ResolveResult = {
 
 const execFileAsync = promisify(execFile);
 const ytDlpCookiesPath = process.env.YT_DLP_COOKIES_PATH?.trim() || null;
+const ytDlpExtractorArgs = process.env.YT_DLP_EXTRACTOR_ARGS?.trim() || null;
 const ytDlpFormats = [
   process.env.YT_DLP_FORMAT?.trim(),
   "ba",
@@ -131,6 +132,7 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         format,
         addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
         ...(cookiesPath ? { cookies: cookiesPath } : {}),
+        ...(ytDlpExtractorArgs ? { extractorArgs: ytDlpExtractorArgs } : {}),
       };
 
       let ytOutput: YtDlpResult;
@@ -154,6 +156,9 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         ];
         if (cookiesPath) {
           args.push("--cookies", cookiesPath);
+        }
+        if (ytDlpExtractorArgs) {
+          args.push("--extractor-args", ytDlpExtractorArgs);
         }
 
         const result = (await execFileAsync("python", args, {
