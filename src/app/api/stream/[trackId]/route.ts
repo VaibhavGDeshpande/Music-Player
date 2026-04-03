@@ -27,6 +27,8 @@ type SpawnLikeError = Error & {
   code?: string;
   stderr?: string;
   stdout?: string;
+  format?: string;
+  attemptedFormats?: string[];
 };
 type ExecFileResult = { stdout: string; stderr: string };
 type ResolveResult = {
@@ -35,6 +37,7 @@ type ResolveResult = {
   mode: "binary" | "python-module" | null;
   cookiesPath: string | null;
   format: string | null;
+  attemptedFormats: string[];
 };
 
 const execFileAsync = promisify(execFile);
@@ -115,8 +118,10 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
   const searchQuery = `ytsearch1:${metadata.title} ${metadata.artist} audio`;
   const cookiesPath = getResolvedCookiesPath();
   let lastError: SpawnLikeError | null = null;
+  let lastTriedFormat: string | null = null;
 
   for (const format of ytDlpFormats) {
+    lastTriedFormat = format;
     try {
       const flags = {
         dumpSingleJson: true,
@@ -164,14 +169,22 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         mode: ytDlpMode,
         cookiesPath,
         format,
+        attemptedFormats: ytDlpFormats,
       } as ResolveResult;
     } catch (error) {
       lastError = error as SpawnLikeError;
+      lastError.format = format;
+      lastError.attemptedFormats = ytDlpFormats;
       const details = lastError.stderr || lastError.message || "";
       if (!details.includes("Requested format is not available")) {
         throw error;
       }
     }
+  }
+
+  if (lastError) {
+    lastError.format = lastTriedFormat ?? undefined;
+    lastError.attemptedFormats = ytDlpFormats;
   }
 
   throw lastError ?? new Error("yt-dlp did not find a playable format");
@@ -261,6 +274,7 @@ export async function GET(
       mode: ytDlpMode,
       cookiesPath: getResolvedCookiesPath(),
       format: null,
+      attemptedFormats: ytDlpFormats,
     };
 
     try {
@@ -289,7 +303,9 @@ export async function GET(
               source: ytDlpSource,
               mode: ytDlpMode,
               cookiesPath: getResolvedCookiesPath(),
-              format: resolveResult.format,
+              format: typedFallbackError.format ?? resolveResult.format,
+              attemptedFormats:
+                typedFallbackError.attemptedFormats ?? resolveResult.attemptedFormats,
             },
             { status: 500 }
           );
@@ -303,7 +319,9 @@ export async function GET(
             source: ytDlpSource,
             mode: ytDlpMode,
             cookiesPath: getResolvedCookiesPath(),
-            format: resolveResult.format,
+            format: spawnError.format ?? resolveResult.format,
+            attemptedFormats:
+              spawnError.attemptedFormats ?? resolveResult.attemptedFormats,
           },
           { status: 502 }
         );
@@ -321,6 +339,7 @@ export async function GET(
           mode: resolveResult.mode,
           cookiesPath: resolveResult.cookiesPath,
           format: resolveResult.format,
+          attemptedFormats: resolveResult.attemptedFormats,
         },
         { status: 502 }
       );
