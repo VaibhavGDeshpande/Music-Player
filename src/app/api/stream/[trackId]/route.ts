@@ -44,6 +44,7 @@ const execFileAsync = promisify(execFile);
 const ytDlpCookiesPath = process.env.YT_DLP_COOKIES_PATH?.trim() || null;
 const ytDlpFormats = [
   process.env.YT_DLP_FORMAT?.trim(),
+  "ba",
   "bestaudio[ext=m4a]/bestaudio",
   "bestaudio/best",
 ].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
@@ -295,11 +296,21 @@ export async function GET(
           resolveResult = await resolveWithYtDlp(metadata);
         } catch (fallbackError) {
           const typedFallbackError = fallbackError as SpawnLikeError;
+          const fallbackDetails =
+            typedFallbackError.stderr || typedFallbackError.message || "Unknown yt-dlp error";
+          const isFallbackMissing =
+            typedFallbackError.code === "ENOENT" ||
+            fallbackDetails.includes("No module named yt_dlp");
+
           return NextResponse.json(
             {
-              error: "yt-dlp not installed locally",
-              message: `Install yt-dlp or set YT_DLP_PATH. Tried: ${ytDlpSource ?? "unknown"}`,
-              details: typedFallbackError.stderr || typedFallbackError.message,
+              error: isFallbackMissing
+                ? "yt-dlp not installed locally"
+                : "yt-dlp failed to resolve audio",
+              message: isFallbackMissing
+                ? `Install yt-dlp or set YT_DLP_PATH. Tried: ${ytDlpSource ?? "unknown"}`
+                : "yt-dlp fallback executed but did not return a playable audio stream",
+              details: fallbackDetails,
               source: ytDlpSource,
               mode: ytDlpMode,
               cookiesPath: getResolvedCookiesPath(),
@@ -307,7 +318,7 @@ export async function GET(
               attemptedFormats:
                 typedFallbackError.attemptedFormats ?? resolveResult.attemptedFormats,
             },
-            { status: 500 }
+            { status: isFallbackMissing ? 500 : 502 }
           );
         }
       }
