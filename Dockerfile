@@ -1,7 +1,12 @@
-FROM node:20-alpine
+# Use Debian slim instead of Alpine to ensure glibc compatibility for yt-dlp binaries
+FROM node:20-bookworm-slim
 
-# Install Python and FFmpeg required for yt-dlp to function properly
-RUN apk add --no-cache python3 ffmpeg
+# Install Python, PIP, and FFmpeg required for yt-dlp to function properly
+# We clear the apt cache afterward to keep the image size small
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip ffmpeg && \
+    pip3 install --no-cache-dir --upgrade yt-dlp && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
