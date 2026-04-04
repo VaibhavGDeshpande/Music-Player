@@ -1,5 +1,3 @@
-//working one 
-
 import { supabase } from "@/lib/supabaseClient";
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
@@ -38,17 +36,27 @@ type ResolveResult = {
   cookiesPath: string | null;
   format: string | null;
   attemptedFormats: string[];
+  proxyEnabled: boolean;
 };
 
 const execFileAsync = promisify(execFile);
 const ytDlpCookiesPath = process.env.YT_DLP_COOKIES_PATH?.trim() || null;
+const ytDlpProxyUrl = process.env.YT_DLP_PROXY_URL?.trim() || null;
+
+// FIX 1: Always read extractor args from env so android_embedded client is passed through
 const ytDlpExtractorArgs = process.env.YT_DLP_EXTRACTOR_ARGS?.trim() || null;
+
+// FIX 2: Removed "ba" (invalid alias), use proper format strings only.
+// bestaudio/best is the reliable catch-all for Cloud Run restricted manifests.
 const ytDlpFormats = [
   process.env.YT_DLP_FORMAT?.trim(),
-  "ba",
-  "bestaudio[ext=m4a]/bestaudio",
+  "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio",
   "bestaudio/best",
-].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
+  "best",
+].filter(
+  (value, index, array): value is string =>
+    Boolean(value) && array.indexOf(value) === index
+);
 
 let ytDlExec: ReturnType<typeof create> | null = null;
 let ytDlpSource: string | null = null;
@@ -56,6 +64,9 @@ let ytDlpMode: "binary" | "python-module" | null = null;
 
 try {
   const binaryName = process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp";
+
+  // FIX 3: YT_DLP_PATH must match the actual binary path in the Docker image.
+  // Dockerfile installs to /opt/yt-dlp/bin/yt-dlp — ensure env var matches.
   const configuredBinary = process.env.YT_DLP_PATH?.trim();
   const bundledBinary = path.join(
     process.cwd(),
@@ -65,7 +76,8 @@ try {
     binaryName
   );
 
-  if (configuredBinary) {
+  if (configuredBinary && fs.existsSync(configuredBinary)) {
+    // Only use configuredBinary if the file actually exists at that path
     ytDlExec = create(configuredBinary);
     ytDlpSource = configuredBinary;
     ytDlpMode = "binary";
@@ -131,8 +143,11 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         noWarnings: true,
         format,
         addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
-        ...(cookiesPath ? { cookies: cookiesPath } : {}),
+        // FIX 4: extractor-args is critical — passes android_embedded player client
+        // so YouTube serves a valid manifest even from Cloud Run IPs.
         ...(ytDlpExtractorArgs ? { extractorArgs: ytDlpExtractorArgs } : {}),
+        ...(cookiesPath ? { cookies: cookiesPath } : {}),
+        ...(ytDlpProxyUrl ? { proxy: ytDlpProxyUrl } : {}),
       };
 
       let ytOutput: YtDlpResult;
@@ -140,6 +155,8 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
       if (ytDlExec && ytDlpMode === "binary") {
         ytOutput = (await ytDlExec(searchQuery, flags)) as YtDlpResult;
       } else {
+        // FIX 5: Python module fallback — extractor-args was already present in
+        // original code but double-checked it's passed correctly here.
         const args = [
           "-m",
           "yt_dlp",
@@ -160,8 +177,11 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         if (ytDlpExtractorArgs) {
           args.push("--extractor-args", ytDlpExtractorArgs);
         }
+        if (ytDlpProxyUrl) {
+          args.push("--proxy", ytDlpProxyUrl);
+        }
 
-        const result = (await execFileAsync("python", args, {
+        const result = (await execFileAsync("python3", args, {
           windowsHide: true,
           maxBuffer: 10 * 1024 * 1024,
         })) as ExecFileResult;
@@ -176,12 +196,14 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         cookiesPath,
         format,
         attemptedFormats: ytDlpFormats,
+        proxyEnabled: Boolean(ytDlpProxyUrl),
       } as ResolveResult;
     } catch (error) {
       lastError = error as SpawnLikeError;
       lastError.format = format;
       lastError.attemptedFormats = ytDlpFormats;
       const details = lastError.stderr || lastError.message || "";
+      // Only continue loop on format-not-available; throw everything else immediately
       if (!details.includes("Requested format is not available")) {
         throw error;
       }
@@ -281,6 +303,7 @@ export async function GET(
       cookiesPath: getResolvedCookiesPath(),
       format: null,
       attemptedFormats: ytDlpFormats,
+      proxyEnabled: Boolean(ytDlpProxyUrl),
     };
 
     try {
@@ -291,13 +314,14 @@ export async function GET(
         source: ytDlpSource,
         mode: ytDlpMode,
         cookiesPath: getResolvedCookiesPath(),
+        proxyEnabled: Boolean(ytDlpProxyUrl),
       });
 
       const spawnError = error as SpawnLikeError;
       if (spawnError.code === "ENOENT") {
         try {
           ytDlpMode = "python-module";
-          ytDlpSource = "python -m yt_dlp";
+          ytDlpSource = "python3 -m yt_dlp"; // FIX 6: use python3 not python in Debian image
           resolveResult = await resolveWithYtDlp(metadata);
         } catch (fallbackError) {
           const typedFallbackError = fallbackError as SpawnLikeError;
@@ -310,7 +334,7 @@ export async function GET(
           return NextResponse.json(
             {
               error: isFallbackMissing
-                ? "yt-dlp not installed locally"
+                ? "yt-dlp not installed"
                 : "yt-dlp failed to resolve audio",
               message: isFallbackMissing
                 ? `Install yt-dlp or set YT_DLP_PATH. Tried: ${ytDlpSource ?? "unknown"}`
@@ -322,6 +346,7 @@ export async function GET(
               format: typedFallbackError.format ?? resolveResult.format,
               attemptedFormats:
                 typedFallbackError.attemptedFormats ?? resolveResult.attemptedFormats,
+              proxyEnabled: resolveResult.proxyEnabled,
             },
             { status: isFallbackMissing ? 500 : 502 }
           );
@@ -338,6 +363,7 @@ export async function GET(
             format: spawnError.format ?? resolveResult.format,
             attemptedFormats:
               spawnError.attemptedFormats ?? resolveResult.attemptedFormats,
+            proxyEnabled: resolveResult.proxyEnabled,
           },
           { status: 502 }
         );
@@ -350,12 +376,13 @@ export async function GET(
       return NextResponse.json(
         {
           error: "Could not resolve audio URL",
-          message: "Local yt-dlp did not return a playable audio URL",
+          message: "yt-dlp did not return a playable audio URL",
           source: resolveResult.source,
           mode: resolveResult.mode,
           cookiesPath: resolveResult.cookiesPath,
           format: resolveResult.format,
           attemptedFormats: resolveResult.attemptedFormats,
+          proxyEnabled: resolveResult.proxyEnabled,
         },
         { status: 502 }
       );
