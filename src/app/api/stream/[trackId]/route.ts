@@ -36,12 +36,10 @@ type ResolveResult = {
   cookiesPath: string | null;
   format: string | null;
   attemptedFormats: string[];
-  proxyEnabled: boolean;
 };
 
 const execFileAsync = promisify(execFile);
 const ytDlpCookiesPath = process.env.YT_DLP_COOKIES_PATH?.trim() || null;
-const ytDlpProxyUrl = process.env.YT_DLP_PROXY_URL?.trim() || null;
 
 // FIX 1: Always read extractor args from env so android_embedded client is passed through
 const ytDlpExtractorArgs = process.env.YT_DLP_EXTRACTOR_ARGS?.trim() || null;
@@ -147,7 +145,6 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         // so YouTube serves a valid manifest even from Cloud Run IPs.
         ...(ytDlpExtractorArgs ? { extractorArgs: ytDlpExtractorArgs } : {}),
         ...(cookiesPath ? { cookies: cookiesPath } : {}),
-        ...(ytDlpProxyUrl ? { proxy: ytDlpProxyUrl } : {}),
       };
 
       let ytOutput: YtDlpResult;
@@ -177,9 +174,6 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         if (ytDlpExtractorArgs) {
           args.push("--extractor-args", ytDlpExtractorArgs);
         }
-        if (ytDlpProxyUrl) {
-          args.push("--proxy", ytDlpProxyUrl);
-        }
 
         const result = (await execFileAsync("python3", args, {
           windowsHide: true,
@@ -196,7 +190,6 @@ async function resolveWithYtDlp(metadata: TrackMetadata) {
         cookiesPath,
         format,
         attemptedFormats: ytDlpFormats,
-        proxyEnabled: Boolean(ytDlpProxyUrl),
       } as ResolveResult;
     } catch (error) {
       lastError = error as SpawnLikeError;
@@ -303,7 +296,6 @@ export async function GET(
       cookiesPath: getResolvedCookiesPath(),
       format: null,
       attemptedFormats: ytDlpFormats,
-      proxyEnabled: Boolean(ytDlpProxyUrl),
     };
 
     try {
@@ -314,7 +306,6 @@ export async function GET(
         source: ytDlpSource,
         mode: ytDlpMode,
         cookiesPath: getResolvedCookiesPath(),
-        proxyEnabled: Boolean(ytDlpProxyUrl),
       });
 
       const spawnError = error as SpawnLikeError;
@@ -346,7 +337,6 @@ export async function GET(
               format: typedFallbackError.format ?? resolveResult.format,
               attemptedFormats:
                 typedFallbackError.attemptedFormats ?? resolveResult.attemptedFormats,
-              proxyEnabled: resolveResult.proxyEnabled,
             },
             { status: isFallbackMissing ? 500 : 502 }
           );
@@ -363,7 +353,6 @@ export async function GET(
             format: spawnError.format ?? resolveResult.format,
             attemptedFormats:
               spawnError.attemptedFormats ?? resolveResult.attemptedFormats,
-            proxyEnabled: resolveResult.proxyEnabled,
           },
           { status: 502 }
         );
@@ -382,7 +371,6 @@ export async function GET(
           cookiesPath: resolveResult.cookiesPath,
           format: resolveResult.format,
           attemptedFormats: resolveResult.attemptedFormats,
-          proxyEnabled: resolveResult.proxyEnabled,
         },
         { status: 502 }
       );
