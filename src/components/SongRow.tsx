@@ -27,6 +27,7 @@ function SongRow({
 }: SongRowProps) {
   const {
     playTrack,
+    addToQueue,
     currentTrack,
     isPlaying,
     togglePlay,
@@ -40,6 +41,7 @@ function SongRow({
   const [isDownloading, setIsDownloading] = useState(false);
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
+  const [showQueueToast, setShowQueueToast] = useState(false);
 
   const isCurrentTrack = currentTrack?.id === track.id;
   const isDownloaded = downloadedSongs.has(track.id);
@@ -134,6 +136,18 @@ function SongRow({
       refreshLibrary();
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleAddToQueue = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    try {
+      const audioUrl = await getAudioUrl(track);
+      addToQueue(buildTrackObj(track, audioUrl));
+      setShowQueueToast(true);
+      setTimeout(() => setShowQueueToast(false), 2000);
+    } catch {
     }
   };
 
@@ -259,6 +273,16 @@ function SongRow({
             {isLiked ? "❤️" : "🤍"}
           </button>
 
+          <button
+            onClick={handleAddToQueue}
+            className="text-neutral-400 hover:text-white transition hover:scale-110"
+            title="Add to queue"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 17h10v-2H3v2zm0-4h14v-2H3v2zm0-6v2h14V7H3zm17 4v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4z" />
+            </svg>
+          </button>
+
           {!hidePlaylistButton && (
             <button
               onClick={(e) => {
@@ -324,7 +348,17 @@ function SongRow({
           )}
         </div>
       </td>
+      <QueueToast show={showQueueToast} />
     </tr>
+  );
+}
+
+function QueueToast({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-2xl animate-bounce z-[100] pointer-events-none">
+      Added to Queue
+    </div>
   );
 }
 

@@ -33,6 +33,9 @@ export default function Player() {
     queue,
     currentIndex,
     playTrack,
+    removeFromQueue,
+    clearQueue,
+    randomizeQueue,
     showDesktopLyrics,
     setShowDesktopLyrics,
   } = usePlayer();
@@ -40,6 +43,7 @@ export default function Player() {
   const [showBigPlayer, setShowBigPlayer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [showMobileQueue, setShowMobileQueue] = useState(false);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState(false);
@@ -103,6 +107,10 @@ export default function Player() {
     }
   }, [showBigPlayer, showDesktopLyrics, currentTrack?.id, fetchLyrics]);
 
+  useEffect(() => {
+    setShowMobileQueue(false);
+  }, [currentTrack?.id]);
+
   // Find active lyric line index
   const activeIndex = useMemo(() => {
     if (lyrics.length === 0) return -1;
@@ -117,6 +125,19 @@ export default function Player() {
     }
     return idx;
   }, [currentTime, lyrics]);
+
+  const queueEntries = useMemo(
+    () =>
+      queue.map((track, index) => ({
+        track,
+        index,
+        isCurrent: index === currentIndex,
+        isPlayed: index < currentIndex,
+      })),
+    [queue, currentIndex]
+  );
+
+  const upcomingCount = Math.max(queue.length - currentIndex - 1, 0);
 
   // Auto-scroll to active lyric
   useEffect(() => {
@@ -256,7 +277,7 @@ export default function Player() {
           {/* Top bar */}
           <div className="flex items-center justify-between px-6 pt-4 pb-2">
             <button
-              onClick={() => { setShowBigPlayer(false); setShowLyrics(false); }}
+              onClick={() => { setShowBigPlayer(false); setShowLyrics(false); setShowMobileQueue(false); }}
               className="text-white text-2xl p-2 -ml-2 active:scale-90 transition"
               aria-label="Close"
             >
@@ -285,7 +306,75 @@ export default function Player() {
 
           {/* Main content — toggles between album art and lyrics */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            {!showLyrics ? (
+            {showMobileQueue ? (
+              <div className="flex-1 overflow-y-auto px-6 pt-2 pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-bold text-white">Queue</p>
+                    <p className="text-xs text-neutral-400">
+                      {upcomingCount > 0 ? `${upcomingCount} up next` : "No upcoming tracks yet"}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={randomizeQueue}
+                      disabled={upcomingCount < 2}
+                      className="text-[10px] font-bold uppercase tracking-wide border border-neutral-700 rounded-full px-3 py-1.5 text-white disabled:opacity-40"
+                    >
+                      Random
+                    </button>
+                    <button
+                      onClick={clearQueue}
+                      disabled={upcomingCount === 0}
+                      className="text-[10px] font-bold uppercase tracking-wide border border-neutral-700 rounded-full px-3 py-1.5 text-white disabled:opacity-40"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 pb-10">
+                  {queueEntries.map(({ track, index, isCurrent, isPlayed }) => (
+                    <div
+                      key={`${track.id}-${index}`}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-3 ${isCurrent ? "bg-white/10" : "bg-white/5"}`}
+                    >
+                      <button
+                        onClick={() => playTrack(track, queue)}
+                        className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                      >
+                        <img
+                          src={track.cover || "/placeholder.svg"}
+                          alt=""
+                          className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-sm font-semibold truncate ${isCurrent ? "text-green-400" : "text-white"}`}>
+                            {track.title}
+                          </p>
+                          <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
+                        </div>
+                      </button>
+                      {isCurrent ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-green-400">Now</span>
+                      ) : isPlayed ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-neutral-500">Played</span>
+                      ) : (
+                        <button
+                          onClick={() => removeFromQueue(track.id)}
+                          className="text-neutral-400 active:scale-90 transition"
+                          title="Remove from queue"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13H5v-2h14v2z" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : !showLyrics ? (
               /* Album Art View */
               <div className="flex-1 flex items-center justify-center px-8 pt-4">
                 <div className="w-full max-w-[340px] aspect-square rounded-lg overflow-hidden shadow-2xl">
@@ -497,19 +586,40 @@ export default function Player() {
 
           {/* Lyrics Toggle Button */}
           <div className="flex justify-center pb-6 pt-1">
-            <button
-              onClick={() => setShowLyrics(!showLyrics)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
-                showLyrics
-                  ? "bg-green-500 text-black"
-                  : "bg-neutral-800 text-neutral-400 active:bg-neutral-700"
-              }`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-              </svg>
-              Lyrics
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setShowMobileQueue(false);
+                  setShowLyrics((prev) => !prev);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
+                  showLyrics && !showMobileQueue
+                    ? "bg-green-500 text-black"
+                    : "bg-neutral-800 text-neutral-400 active:bg-neutral-700"
+                }`}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
+                </svg>
+                Lyrics
+              </button>
+              <button
+                onClick={() => {
+                  setShowLyrics(false);
+                  setShowMobileQueue((prev) => !prev);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
+                  showMobileQueue
+                    ? "bg-green-500 text-black"
+                    : "bg-neutral-800 text-neutral-400 active:bg-neutral-700"
+                }`}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 17h10v-2H3v2zm0-4h14v-2H3v2zm0-6v2h14V7H3zm17 4v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4z" />
+                </svg>
+                Queue
+              </button>
+            </div>
           </div>
         </div>
       )}

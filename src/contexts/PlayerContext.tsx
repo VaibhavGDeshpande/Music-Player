@@ -23,6 +23,10 @@ type PlayerContextType = {
   queue: Track[];
   currentIndex: number;
   playTrack: (track: Track, newQueue?: Track[]) => void;
+  addToQueue: (track: Track) => void;
+  removeFromQueue: (trackId: string) => void;
+  clearQueue: () => void;
+  randomizeQueue: () => void;
   togglePlay: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
@@ -392,9 +396,24 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     if (currentTrack) flushListenTime(currentTrack);
 
     if (newQueue) {
-      setQueue(newQueue);
-      const index = newQueue.findIndex(t => t.id === track.id);
-      setCurrentIndex(index !== -1 ? index : 0);
+      if (isShuffling) {
+        // If shuffle is ON, we save the new queue as original, 
+        // but shuffle the active queue immediately.
+        originalQueueRef.current = newQueue;
+        const others = newQueue.filter(t => t.id !== track.id);
+        // Fisher-Yates shuffle for the rest
+        for (let i = others.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [others[i], others[j]] = [others[j], others[i]];
+        }
+        const shuffled = [track, ...others];
+        setQueue(shuffled);
+        setCurrentIndex(0);
+      } else {
+        setQueue(newQueue);
+        const index = newQueue.findIndex(t => t.id === track.id);
+        setCurrentIndex(index !== -1 ? index : 0);
+      }
     } else {
         // If no queue provided, just play this one
         setQueue([track]);
@@ -402,6 +421,44 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
     setCurrentTrack(track);
     setIsPlaying(true);
+  };
+
+  const addToQueue = (track: Track) => {
+    if (!currentTrack) {
+      playTrack(track);
+      return;
+    }
+
+    // Update original queue if it exists
+    if (originalQueueRef.current.length > 0) {
+      const existIdx = originalQueueRef.current.findIndex(t => t.id === track.id);
+      if (existIdx === -1) {
+        originalQueueRef.current = [...originalQueueRef.current, track];
+      }
+    }
+
+    setQueue((q) => {
+      const next = [...q];
+      const existingIndex = next.findIndex((t) => t.id === track.id);
+      const insertIndex = Math.min(Math.max(currentIndex + 1, 0), next.length);
+
+      if (existingIndex !== -1) {
+        const [existingTrack] = next.splice(existingIndex, 1);
+        const adjustedInsertIndex = existingIndex < insertIndex ? insertIndex - 1 : insertIndex;
+        next.splice(adjustedInsertIndex, 0, existingTrack);
+
+        if (existingIndex < currentIndex) {
+          setCurrentIndex((idx) => Math.max(0, idx - 1));
+        } else if (existingIndex === currentIndex) {
+           setCurrentIndex(adjustedInsertIndex);
+        }
+
+        return next;
+      }
+
+      next.splice(insertIndex, 0, track);
+      return next;
+    });
   };
 
   const toggleLoop = () => {
@@ -444,27 +501,39 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const randomizeQueue = () => {
+    setQueue((q) => {
+      if (q.length <= 1 || currentIndex < 0) return q;
+
+      const played = q.slice(0, currentIndex + 1);
+      const upcoming = q.slice(currentIndex + 1);
+
+      for (let i = upcoming.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [upcoming[i], upcoming[j]] = [upcoming[j], upcoming[i]];
+      }
+
+      return [...played, ...upcoming];
+    });
+  };
+
   const togglePlay = () => {
     setIsPlaying(prev => !prev);
   };
 
   const nextTrack = useCallback(() => {
-    setQueue(q => {
-      setCurrentIndex(idx => {
-        const nextIdx = idx + 1;
-        if (nextIdx < q.length) {
-          flushListenTime(q[idx]); // ← flush current before switching
-          setCurrentTrack(q[nextIdx]);
-          return nextIdx;
-        } else {
-          flushListenTime(q[idx]); // flush last track
-          setIsPlaying(false);
-          return idx;
-        }
-      });
-      return q;
-    });
-  }, [flushListenTime]);
+    if (queue.length === 0 || currentIndex === -1) return;
+
+    const nextIdx = currentIndex + 1;
+    if (nextIdx < queue.length) {
+      flushListenTime(queue[currentIndex]);
+      setCurrentIndex(nextIdx);
+      setCurrentTrack(queue[nextIdx]);
+    } else {
+      if (queue[currentIndex]) flushListenTime(queue[currentIndex]);
+      setIsPlaying(false);
+    }
+  }, [queue, currentIndex, flushListenTime]);
 
   // Keep ref in sync
   useEffect(() => {
@@ -472,16 +541,74 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   }, [nextTrack]);
 
   const prevTrack = () => {
-    if (queue.length === 0) return;
+    if (queue.length === 0 || currentIndex === -1) return;
+
+    if (currentTime > 3) {
+      if (audioRef.current) audioRef.current.currentTime = 0;
+      return;
+    }
+
     const prevIndex = currentIndex - 1;
     if (prevIndex >= 0) {
-      flushListenTime(queue[currentIndex]); // ← flush before going back
+      flushListenTime(queue[currentIndex]);
       setCurrentIndex(prevIndex);
       setCurrentTrack(queue[prevIndex]);
     } else {
-        // Restart current song if at start
-        if (audioRef.current) audioRef.current.currentTime = 0;
+      if (audioRef.current) audioRef.current.currentTime = 0;
     }
+  };
+
+  const removeFromQueue = (trackId: string) => {
+    if (originalQueueRef.current.length > 0) {
+      originalQueueRef.current = originalQueueRef.current.filter(t => t.id !== trackId);
+    }
+
+    setQueue((q) => {
+      const removeIndex = q.findIndex((track) => track.id === trackId);
+      if (removeIndex === -1) return q;
+
+      const nextQueue = q.filter((track) => track.id !== trackId);
+
+      if (removeIndex < currentIndex) {
+        setCurrentIndex((idx) => Math.max(0, idx - 1));
+        return nextQueue;
+      }
+
+      if (removeIndex === currentIndex) {
+        flushListenTime(q[removeIndex] ?? currentTrack);
+
+        if (nextQueue.length === 0) {
+          if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = "";
+          }
+          setCurrentTrack(null);
+          setCurrentIndex(-1);
+          setIsPlaying(false);
+          setCurrentTime(0);
+          setDuration(0);
+          return [];
+        }
+
+        const nextIndex = Math.min(removeIndex, nextQueue.length - 1);
+        setCurrentIndex(nextIndex);
+        setCurrentTrack(nextQueue[nextIndex]);
+        setIsPlaying(true);
+      }
+
+      return nextQueue;
+    });
+  };
+
+  const clearQueue = () => {
+    if (!currentTrack) {
+      setQueue([]);
+      setCurrentIndex(-1);
+      return;
+    }
+
+    setQueue([currentTrack]);
+    setCurrentIndex(0);
   };
 
   const seek = (time: number) => {
@@ -569,7 +696,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <PlayerContext.Provider value={{ currentTrack, isPlaying, isBuffering, playbackError, networkQuality, queue, currentIndex, playTrack, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, isShuffling, toggleShuffle, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, retryPlayback, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache, showDesktopLyrics, setShowDesktopLyrics }}>
+    <PlayerContext.Provider value={{ currentTrack, isPlaying, isBuffering, playbackError, networkQuality, queue, currentIndex, playTrack, addToQueue, removeFromQueue, clearQueue, randomizeQueue, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, isShuffling, toggleShuffle, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, retryPlayback, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache, showDesktopLyrics, setShowDesktopLyrics }}>
       {children}
     </PlayerContext.Provider>
   );

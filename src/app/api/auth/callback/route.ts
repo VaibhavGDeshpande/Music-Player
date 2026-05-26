@@ -6,8 +6,25 @@ import {
   SpotifyProfile,
 } from "@/types/spotify";
 
+function getRedirectUri(request: NextRequest) {
+  return new URL("/api/auth/callback", request.url).toString();
+}
+
+async function readSpotifyError(response: Response) {
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text || response.statusText };
+  }
+}
+
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET?.trim();
+  const redirectUri = getRedirectUri(request);
 
   if (!code) {
     return NextResponse.json(
@@ -16,32 +33,56 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  if (!clientId || !clientSecret) {
+    return NextResponse.json(
+      { error: "Missing Spotify OAuth credentials" },
+      { status: 500 }
+    );
+  }
+
   // Exchange code for token
-  const tokenRes = await fetch(
-    "https://accounts.spotify.com/api/token",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization:
-          "Basic " +
-          Buffer.from(
-            `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
-          ).toString("base64"),
+  let tokenRes: Response;
+
+  try {
+    tokenRes = await fetch(
+      "https://accounts.spotify.com/api/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization:
+            "Basic " +
+            Buffer.from(
+              `${clientId}:${clientSecret}`
+            ).toString("base64"),
+        },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        }),
+      }
+    );
+  } catch (error) {
+    console.error("Token exchange request failed:", error);
+    return NextResponse.json(
+      {
+        error: "Failed to reach Spotify token endpoint",
+        details: error instanceof Error ? error.message : String(error),
       },
-      body: new URLSearchParams({
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: process.env.SPOTIFY_REDIRECT_URI!,
-      }),
-    }
-  );
+      { status: 502 }
+    );
+  }
 
   if (!tokenRes.ok) {
-    const errorData = await tokenRes.json();
+    const errorData = await readSpotifyError(tokenRes);
     console.error("Token exchange failed:", errorData);
     return NextResponse.json(
-      { error: "Failed to exchange code for token", details: errorData },
+      {
+        error: "Failed to exchange code for token",
+        details: errorData,
+        redirectUri,
+      },
       { status: tokenRes.status }
     );
   }
