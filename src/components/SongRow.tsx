@@ -133,7 +133,7 @@ function SongRow({
     try {
       setIsDownloading(true);
       await onDownload(track);
-      refreshLibrary();
+      await refreshLibrary();
     } finally {
       setIsDownloading(false);
     }

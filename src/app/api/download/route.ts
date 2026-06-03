@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { getAccessToken } from "@/lib/spotify";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 /** Fetch duration_ms from Spotify for a single track. Returns 0 on failure. */
 async function fetchDurationMs(userId: string, trackId: string): Promise<number> {
   try {
@@ -25,14 +28,48 @@ async function fetchDurationMs(userId: string, trackId: string): Promise<number>
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.JWT_SECRET) {
+      return NextResponse.json(
+        { error: "Missing server config", message: "JWT_SECRET is not set" },
+        { status: 500 }
+      );
+    }
+
+    if (!process.env.SPOTIFY_DOWNLOADER_KEY) {
+      return NextResponse.json(
+        {
+          error: "Missing server config",
+          message: "SPOTIFY_DOWNLOADER_KEY is not set",
+        },
+        { status: 500 }
+      );
+    }
+
     const token = request.cookies.get("session")?.value;
 
     if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-    const { trackId, spotifyUrl } = await request.json();
+    let decoded: { userId: string };
+
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET) as { userId: string };
+    } catch (error) {
+      console.error("JWT verify failed:", error);
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
+
+    let body: { trackId?: string; spotifyUrl?: string };
+
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const trackId = body.trackId?.trim();
+    const spotifyUrl = body.spotifyUrl?.trim();
 
     // Validate inputs
     if (!trackId && !spotifyUrl) {
@@ -40,16 +77,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine the ID to use
-    const finalTrackId = trackId || spotifyUrl.split("/").pop().split("?")[0];
+    const finalTrackId = trackId || spotifyUrl!.split("/").pop()?.split("?")[0];
+    if (!finalTrackId) {
+      return NextResponse.json({ error: "Invalid Spotify URL" }, { status: 400 });
+    }
+
     const finalSpotifyUrl = spotifyUrl || `https://open.spotify.com/track/${trackId}`;
 
     // 1. Check if song already exists for this user
-    const { data: existingSong } = await supabase
+    const { data: existingSong, error: existingSongError } = await supabase
       .from("songs")
       .select("*")
       .eq("user_id", decoded.userId)
       .eq("spotify_id", finalTrackId)
-      .single();
+      .maybeSingle();
+
+    if (existingSongError) {
+      console.error("Existing song lookup error:", existingSongError);
+      return NextResponse.json(
+        {
+          error: "Failed to check existing song",
+          message: existingSongError.message,
+        },
+        { status: 500 }
+      );
+    }
 
     if (existingSong) {
       return NextResponse.json({ message: "Song already downloaded", song: existingSong });
@@ -61,7 +113,7 @@ export async function POST(request: NextRequest) {
       {
         method: "GET",
         headers: {
-          "X-RapidAPI-Key": process.env.SPOTIFY_DOWNLOADER_KEY!,
+          "X-RapidAPI-Key": process.env.SPOTIFY_DOWNLOADER_KEY,
           "x-rapidapi-host": "spotify-downloader9.p.rapidapi.com",
           "x-api-host": "spotify-downloader9.p.rapidapi.com", 
           "Content-Type": "application/json",
@@ -97,7 +149,7 @@ export async function POST(request: NextRequest) {
 
     // 4. Upload to Supabase Storage
     const fileName = `${decoded.userId}/${finalTrackId}.mp3`;
-    const { data: storageData, error: storageError } = await supabase.storage
+    const { error: storageError } = await supabase.storage
       .from("music")
       .upload(fileName, mp3Buffer, {
         contentType: "audio/mpeg",
@@ -106,13 +158,17 @@ export async function POST(request: NextRequest) {
 
     if (storageError) {
       console.error("Storage Upload Error:", storageError);
-      return NextResponse.json({ error: "Failed to upload to storage" }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Failed to upload to storage",
+          message: storageError.message,
+        },
+        { status: 500 }
+      );
     }
 
     // 5. Get Public URL
-    const { data: publicUrlData } = supabase.storage
-      .from("music")
-      .getPublicUrl(fileName);
+    supabase.storage.from("music").getPublicUrl(fileName);
 
     // 6. Insert Metadata into Database
     const { data: song, error: dbError } = await supabase
@@ -132,13 +188,25 @@ export async function POST(request: NextRequest) {
 
     if (dbError) {
        console.error("Database Insert Error:", dbError);
-       return NextResponse.json({ error: "Failed to save song metadata" }, { status: 500 });
+       return NextResponse.json(
+         {
+           error: "Failed to save song metadata",
+           message: dbError.message,
+         },
+         { status: 500 }
+       );
     }
 
     return NextResponse.json({ success: true, song });
 
   } catch (error) {
     console.error("Download API Error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Internal Server Error",
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
   }
 }

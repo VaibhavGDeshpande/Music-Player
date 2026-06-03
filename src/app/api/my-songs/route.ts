@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ songs }, {
-      headers: { "Cache-Control": "private, max-age=60, stale-while-revalidate=120" },
+      headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {
     console.error("My Songs API Error:", error);

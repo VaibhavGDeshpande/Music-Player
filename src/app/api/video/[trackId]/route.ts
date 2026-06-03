@@ -42,8 +42,18 @@ function isJsonObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function getSearchQuery(metadata: TrackMetadata) {
-  return `${metadata.title} ${metadata.artists.join(" ")} official music video`;
+function getSearchQueries(metadata: TrackMetadata) {
+  const artistQuery = metadata.artists.join(" ");
+  const baseQuery = `${metadata.title} ${artistQuery}`.trim();
+  const queries = [
+    `${baseQuery} official music video`,
+    `${baseQuery} official audio`,
+    `${baseQuery} soundtrack`,
+    `${baseQuery} OST`,
+    baseQuery,
+  ];
+
+  return queries.filter((query, index, array) => query && array.indexOf(query) === index);
 }
 
 async function fetchSpotifyTrackMetadata(
@@ -81,49 +91,90 @@ async function resolveVideoIdWithYoutubeApi(
 ): Promise<VideoCandidate | null> {
   if (!youtubeApiKey) return null;
 
-  const url = new URL("https://www.googleapis.com/youtube/v3/search");
-  url.searchParams.set("part", "snippet");
-  url.searchParams.set("maxResults", "1");
-  url.searchParams.set("type", "video");
-  url.searchParams.set("videoEmbeddable", "true");
-  url.searchParams.set("q", getSearchQuery(metadata));
-  url.searchParams.set("key", youtubeApiKey);
+  for (const query of getSearchQueries(metadata)) {
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("maxResults", "5");
+    url.searchParams.set("type", "video");
+    url.searchParams.set("videoEmbeddable", "true");
+    url.searchParams.set("q", query);
+    url.searchParams.set("key", youtubeApiKey);
 
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) return null;
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) continue;
 
-  const data = await response.json();
-  const firstItem = isJsonObject(data) && Array.isArray(data.items) ? data.items[0] : null;
-  const id = isJsonObject(firstItem) ? firstItem.id : null;
-  const videoId = isJsonObject(id) && typeof id.videoId === "string" ? id.videoId : null;
+      const data = await response.json();
+      const items = isJsonObject(data) && Array.isArray(data.items) ? data.items : [];
 
-  return videoId ? { videoId } : null;
+      for (const item of items) {
+        const id = isJsonObject(item) ? item.id : null;
+        const videoId = isJsonObject(id) && typeof id.videoId === "string" ? id.videoId : null;
+        if (videoId) return { videoId };
+      }
+    } catch (error) {
+      console.error("YouTube video search failed:", query, error);
+    }
+  }
+
+  return null;
 }
 
 async function resolveVideoIdWithPipedSearch(
   metadata: TrackMetadata
 ): Promise<VideoCandidate | null> {
-  const query = getSearchQuery(metadata);
+  for (const query of getSearchQueries(metadata)) {
+    for (const baseUrl of PIPED_INSTANCES) {
+      try {
+        const url = new URL("/search", baseUrl);
+        url.searchParams.set("q", query);
+        url.searchParams.set("filter", "videos");
 
-  for (const baseUrl of PIPED_INSTANCES) {
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) continue;
+
+        const data = await response.json();
+        const items = Array.isArray(data)
+          ? data
+          : isJsonObject(data) && Array.isArray(data.items)
+            ? data.items
+            : [];
+        const firstVideo = items.find((item) => isJsonObject(item) && typeof item.url === "string");
+
+        if (isJsonObject(firstVideo) && typeof firstVideo.url === "string") {
+          const match = firstVideo.url.match(/(?:watch\?v=|\/watch\/|\/v\/)([^&/?]+)/);
+          if (match?.[1]) return { videoId: match[1] };
+        }
+      } catch (error) {
+        console.error("Piped video search failed:", baseUrl, query, error);
+      }
+    }
+  }
+
+  return null;
+}
+
+async function resolveVideoIdWithYoutubeSearchPage(
+  metadata: TrackMetadata
+): Promise<VideoCandidate | null> {
+  for (const query of getSearchQueries(metadata)) {
     try {
-      const url = new URL("/search", baseUrl);
-      url.searchParams.set("q", query);
-      url.searchParams.set("filter", "videos");
+      const url = new URL("https://www.youtube.com/results");
+      url.searchParams.set("search_query", query);
 
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetch(url, {
+        cache: "no-store",
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+        },
+      });
       if (!response.ok) continue;
 
-      const data = await response.json();
-      const items = Array.isArray(data) ? data : isJsonObject(data) && Array.isArray(data.items) ? data.items : [];
-      const firstVideo = items.find((item) => isJsonObject(item) && typeof item.url === "string");
-
-      if (isJsonObject(firstVideo) && typeof firstVideo.url === "string") {
-        const match = firstVideo.url.match(/(?:watch\?v=|\/watch\/|\/v\/)([^&/?]+)/);
-        if (match?.[1]) return { videoId: match[1] };
-      }
+      const html = await response.text();
+      const match = html.match(/"videoId":"([^"]{11})"/);
+      if (match?.[1]) return { videoId: match[1] };
     } catch (error) {
-      console.error("Piped video search failed:", baseUrl, error);
+      console.error("YouTube search page failed:", query, error);
     }
   }
 
@@ -165,7 +216,8 @@ export async function GET(
 
     const resolvedVideo =
       (await resolveVideoIdWithYoutubeApi(metadata)) ||
-      (await resolveVideoIdWithPipedSearch(metadata));
+      (await resolveVideoIdWithPipedSearch(metadata)) ||
+      (await resolveVideoIdWithYoutubeSearchPage(metadata));
 
     if (!resolvedVideo) {
       return NextResponse.json(
@@ -173,6 +225,7 @@ export async function GET(
           error: "Failed to resolve videoId",
           youtubeApiKeySet: Boolean(youtubeApiKey),
           pipedInstances: PIPED_INSTANCES,
+          searchQueries: getSearchQueries(metadata),
           spotifyTrack: metadata,
         },
         { status: 502 }

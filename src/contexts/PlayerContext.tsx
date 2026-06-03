@@ -35,7 +35,7 @@ type PlayerContextType = {
   isShuffling: boolean;
   toggleShuffle: () => void;
   downloadedSongs: Set<string>;
-  refreshLibrary: () => void;
+  refreshLibrary: () => Promise<any[]>;
   likedSongs: Set<string>;
   refreshLikedSongs: () => void;
   toggleLikeSong: (songData: any) => Promise<boolean>;
@@ -134,7 +134,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   // Fetch and cache my-songs
   const refreshMySongsCache = useCallback(async (): Promise<any[]> => {
     try {
-      const res = await fetch("/api/my-songs");
+      const res = await fetch("/api/my-songs", { cache: "no-store" });
       const data = await res.json();
       const songs = data.songs || [];
       setMySongsCache(songs);
@@ -636,7 +636,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
   // Convenience wrappers that also invalidate caches
   const refreshLibrary = () => {
-    refreshMySongsCache();
+    return refreshMySongsCache();
   };
 
   const refreshLikedSongs = () => {

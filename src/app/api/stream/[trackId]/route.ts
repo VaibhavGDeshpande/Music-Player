@@ -23,10 +23,32 @@ type YtDlpResult = {
   entries?: Array<{ url?: string }>;
 };
 
-type SpawnLikeError = Error & { code?: string };
+type SpawnLikeError = Error & {
+  code?: string;
+  stderr?: string;
+  stdout?: string;
+  format?: string;
+  attemptedFormats?: string[];
+};
 type ExecFileResult = { stdout: string; stderr: string };
+type ResolveResult = {
+  url: string | null;
+  source: string | null;
+  mode: "binary" | "python-module" | null;
+  cookiesPath: string | null;
+  format: string | null;
+  attemptedFormats: string[];
+};
 
 const execFileAsync = promisify(execFile);
+const ytDlpCookiesPath = process.env.YT_DLP_COOKIES_PATH?.trim() || null;
+const ytDlpExtractorArgs = process.env.YT_DLP_EXTRACTOR_ARGS?.trim() || null;
+const ytDlpFormats = [
+  process.env.YT_DLP_FORMAT?.trim(),
+  "ba",
+  "bestaudio[ext=m4a]/bestaudio",
+  "bestaudio/best",
+].filter((value, index, array): value is string => Boolean(value) && array.indexOf(value) === index);
 
 let ytDlExec: ReturnType<typeof create> | null = null;
 let ytDlpSource: string | null = null;
@@ -63,6 +85,11 @@ try {
   ytDlpMode = null;
 }
 
+function getResolvedCookiesPath() {
+  if (!ytDlpCookiesPath) return null;
+  return fs.existsSync(ytDlpCookiesPath) ? ytDlpCookiesPath : null;
+}
+
 async function fetchSpotifyTrack(userId: string, trackId: string): Promise<TrackMetadata | null> {
   try {
     const accessToken = await getAccessToken(userId);
@@ -91,43 +118,82 @@ async function fetchSpotifyTrack(userId: string, trackId: string): Promise<Track
 
 async function resolveWithYtDlp(metadata: TrackMetadata) {
   const searchQuery = `ytsearch1:${metadata.title} ${metadata.artist} audio`;
-  const flags = {
-    dumpSingleJson: true,
-    noCheckCertificates: true,
-    noWarnings: true,
-    format: "bestaudio[ext=m4a]/bestaudio",
-    addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
-  };
+  const cookiesPath = getResolvedCookiesPath();
+  let lastError: SpawnLikeError | null = null;
+  let lastTriedFormat: string | null = null;
 
-  let ytOutput: YtDlpResult;
+  for (const format of ytDlpFormats) {
+    lastTriedFormat = format;
+    try {
+      const flags = {
+        dumpSingleJson: true,
+        noCheckCertificates: true,
+        noWarnings: true,
+        format,
+        addHeader: ["referer:youtube.com", "user-agent:Mozilla/5.0"],
+        ...(cookiesPath ? { cookies: cookiesPath } : {}),
+        ...(ytDlpExtractorArgs ? { extractorArgs: ytDlpExtractorArgs } : {}),
+      };
 
-  if (ytDlExec && ytDlpMode === "binary") {
-    ytOutput = (await ytDlExec(searchQuery, flags)) as YtDlpResult;
-  } else {
-    const args = [
-      "-m",
-      "yt_dlp",
-      searchQuery,
-      "--dump-single-json",
-      "--no-check-certificates",
-      "--no-warnings",
-      "-f",
-      "bestaudio[ext=m4a]/bestaudio",
-      "--add-header",
-      "referer:youtube.com",
-      "--add-header",
-      "user-agent:Mozilla/5.0",
-    ];
+      let ytOutput: YtDlpResult;
 
-    const result = (await execFileAsync("python", args, {
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024,
-    })) as ExecFileResult;
+      if (ytDlExec && ytDlpMode === "binary") {
+        ytOutput = (await ytDlExec(searchQuery, flags)) as YtDlpResult;
+      } else {
+        const args = [
+          "-m",
+          "yt_dlp",
+          searchQuery,
+          "--dump-single-json",
+          "--no-check-certificates",
+          "--no-warnings",
+          "-f",
+          format,
+          "--add-header",
+          "referer:youtube.com",
+          "--add-header",
+          "user-agent:Mozilla/5.0",
+        ];
+        if (cookiesPath) {
+          args.push("--cookies", cookiesPath);
+        }
+        if (ytDlpExtractorArgs) {
+          args.push("--extractor-args", ytDlpExtractorArgs);
+        }
 
-    ytOutput = JSON.parse(result.stdout) as YtDlpResult;
+        const result = (await execFileAsync("python", args, {
+          windowsHide: true,
+          maxBuffer: 10 * 1024 * 1024,
+        })) as ExecFileResult;
+
+        ytOutput = JSON.parse(result.stdout) as YtDlpResult;
+      }
+
+      return {
+        url: ytOutput?.entries?.[0]?.url ?? ytOutput?.url ?? null,
+        source: ytDlpSource,
+        mode: ytDlpMode,
+        cookiesPath,
+        format,
+        attemptedFormats: ytDlpFormats,
+      } as ResolveResult;
+    } catch (error) {
+      lastError = error as SpawnLikeError;
+      lastError.format = format;
+      lastError.attemptedFormats = ytDlpFormats;
+      const details = lastError.stderr || lastError.message || "";
+      if (!details.includes("Requested format is not available")) {
+        throw error;
+      }
+    }
   }
 
-  return ytOutput?.entries?.[0]?.url ?? ytOutput?.url ?? null;
+  if (lastError) {
+    lastError.format = lastTriedFormat ?? undefined;
+    lastError.attemptedFormats = ytDlpFormats;
+  }
+
+  throw lastError ?? new Error("yt-dlp did not find a playable format");
 }
 
 export async function GET(
@@ -208,42 +274,88 @@ export async function GET(
       );
     }
 
-    let downloadLink: string | null = null;
+    let resolveResult: ResolveResult = {
+      url: null,
+      source: ytDlpSource,
+      mode: ytDlpMode,
+      cookiesPath: getResolvedCookiesPath(),
+      format: null,
+      attemptedFormats: ytDlpFormats,
+    };
 
     try {
-      downloadLink = await resolveWithYtDlp(metadata);
+      resolveResult = await resolveWithYtDlp(metadata);
     } catch (error) {
-      console.error("yt-dlp execution failed:", error);
+      console.error("yt-dlp execution failed:", {
+        error,
+        source: ytDlpSource,
+        mode: ytDlpMode,
+        cookiesPath: getResolvedCookiesPath(),
+      });
 
       const spawnError = error as SpawnLikeError;
       if (spawnError.code === "ENOENT") {
         try {
           ytDlpMode = "python-module";
           ytDlpSource = "python -m yt_dlp";
-          downloadLink = await resolveWithYtDlp(metadata);
-        } catch {
+          resolveResult = await resolveWithYtDlp(metadata);
+        } catch (fallbackError) {
+          const typedFallbackError = fallbackError as SpawnLikeError;
+          const fallbackDetails =
+            typedFallbackError.stderr || typedFallbackError.message || "Unknown yt-dlp error";
+          const isFallbackMissing =
+            typedFallbackError.code === "ENOENT" ||
+            fallbackDetails.includes("No module named yt_dlp");
+
           return NextResponse.json(
             {
-              error: "yt-dlp not installed locally",
-              message: `Install yt-dlp or set YT_DLP_PATH. Tried: ${ytDlpSource ?? "unknown"}`,
+              error: isFallbackMissing
+                ? "yt-dlp not installed locally"
+                : "yt-dlp failed to resolve audio",
+              message: isFallbackMissing
+                ? `Install yt-dlp or set YT_DLP_PATH. Tried: ${ytDlpSource ?? "unknown"}`
+                : "yt-dlp fallback executed but did not return a playable audio stream",
+              details: fallbackDetails,
+              source: ytDlpSource,
+              mode: ytDlpMode,
+              cookiesPath: getResolvedCookiesPath(),
+              format: typedFallbackError.format ?? resolveResult.format,
+              attemptedFormats:
+                typedFallbackError.attemptedFormats ?? resolveResult.attemptedFormats,
             },
-            { status: 500 }
+            { status: isFallbackMissing ? 500 : 502 }
           );
         }
       }
-      if (!downloadLink) {
+      if (!resolveResult.url) {
         return NextResponse.json(
-          { error: "yt-dlp execution failed" },
-          { status: 500 }
+          {
+            error: "yt-dlp failed to resolve audio",
+            details: spawnError.stderr || spawnError.message,
+            source: ytDlpSource,
+            mode: ytDlpMode,
+            cookiesPath: getResolvedCookiesPath(),
+            format: spawnError.format ?? resolveResult.format,
+            attemptedFormats:
+              spawnError.attemptedFormats ?? resolveResult.attemptedFormats,
+          },
+          { status: 502 }
         );
       }
     }
+
+    const downloadLink = resolveResult.url;
 
     if (!downloadLink) {
       return NextResponse.json(
         {
           error: "Could not resolve audio URL",
           message: "Local yt-dlp did not return a playable audio URL",
+          source: resolveResult.source,
+          mode: resolveResult.mode,
+          cookiesPath: resolveResult.cookiesPath,
+          format: resolveResult.format,
+          attemptedFormats: resolveResult.attemptedFormats,
         },
         { status: 502 }
       );
