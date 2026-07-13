@@ -196,6 +196,7 @@ export default function Sidebar() {
           { href: "/dashboard", label: "Home", icon: "🏠" },
           { href: "/dashboard/search", label: "Search", icon: "🔍" },
           { href: "/dashboard/library", label: "Library", icon: "📚" },
+          { href: "/dashboard/my-songs", label: "My Songs", icon: "📥" },
           { href: "/dashboard/playlists", label: "Playlists", icon: "🎵" },
         ].map((link) => {
           const isActive = pathname === link.href;

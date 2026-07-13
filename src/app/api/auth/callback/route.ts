@@ -152,21 +152,23 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Create JWT session
+  // Create JWT session (expires in 365 days)
   const sessionToken = jwt.sign(
     { userId: data.id },
     process.env.JWT_SECRET!,
-    { expiresIn: "7d" }
+    { expiresIn: "365d" }
   );
 
   const response = NextResponse.redirect(
     new URL("/dashboard", request.url)
   );
 
+  // Set session cookie to persist for 365 days
   response.cookies.set("session", sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
+    maxAge: 365 * 24 * 60 * 60, // 365 days
   });
 
   return response;

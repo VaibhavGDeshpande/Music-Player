@@ -111,6 +111,29 @@ export default function Player() {
     setShowMobileQueue(false);
   }, [currentTrack?.id]);
 
+  // Intercept browser back button to close the mobile big player modal
+  useEffect(() => {
+    if (!showBigPlayer) return;
+
+    // Push state to history to enable back button interception
+    window.history.pushState({ playerOpen: true }, "");
+
+    const handlePopState = (event: PopStateEvent) => {
+      setShowBigPlayer(false);
+      setShowLyrics(false);
+      setShowMobileQueue(false);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (window.history.state?.playerOpen) {
+        window.history.back();
+      }
+    };
+  }, [showBigPlayer]);
+
   // Find active lyric line index
   const activeIndex = useMemo(() => {
     if (lyrics.length === 0) return -1;

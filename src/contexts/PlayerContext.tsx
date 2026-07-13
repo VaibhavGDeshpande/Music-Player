@@ -695,6 +695,64 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Update Media Session Metadata (including cover art) when currentTrack changes
+  useEffect(() => {
+    if ("mediaSession" in navigator && currentTrack) {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title: currentTrack.title,
+        artist: currentTrack.artist,
+        album: currentTrack.album || "Unknown Album",
+        artwork: currentTrack.cover
+          ? [
+              {
+                src: currentTrack.cover,
+                sizes: "512x512",
+                type: "image/jpeg",
+              },
+            ]
+          : [],
+      });
+    }
+  }, [currentTrack]);
+
+  // Update Media Session playback state
+  useEffect(() => {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    }
+  }, [isPlaying]);
+
+  // Handle Media Session playback controls (lock screen keys)
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return;
+
+    try {
+      navigator.mediaSession.setActionHandler("play", () => {
+        setIsPlaying(true);
+      });
+      navigator.mediaSession.setActionHandler("pause", () => {
+        setIsPlaying(false);
+      });
+      navigator.mediaSession.setActionHandler("previoustrack", () => {
+        prevTrack();
+      });
+      navigator.mediaSession.setActionHandler("nexttrack", () => {
+        nextTrack();
+      });
+    } catch (e) {
+      console.warn("MediaSession action handler registration failed:", e);
+    }
+
+    return () => {
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.setActionHandler("play", null);
+        navigator.mediaSession.setActionHandler("pause", null);
+        navigator.mediaSession.setActionHandler("previoustrack", null);
+        navigator.mediaSession.setActionHandler("nexttrack", null);
+      }
+    };
+  }, [nextTrack, prevTrack]);
+
   return (
     <PlayerContext.Provider value={{ currentTrack, isPlaying, isBuffering, playbackError, networkQuality, queue, currentIndex, playTrack, addToQueue, removeFromQueue, clearQueue, randomizeQueue, togglePlay, nextTrack, prevTrack, isLooping, toggleLoop, isShuffling, toggleShuffle, downloadedSongs, refreshLibrary, likedSongs, refreshLikedSongs, toggleLikeSong, currentTime, duration, seek, volume, setVolume, retryPlayback, mySongsCache, likedSongsCache, refreshMySongsCache, refreshLikedSongsCache, showDesktopLyrics, setShowDesktopLyrics }}>
       {children}

@@ -7,14 +7,16 @@ import Link from "next/link";
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { playTrack, downloadedSongs, currentTrack, isPlaying, togglePlay } = usePlayer();
+  const { playTrack, downloadedSongs, currentTrack, isPlaying, togglePlay, mySongsCache, refreshMySongsCache } = usePlayer();
 
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [recentlyPlayed, setRecentlyPlayed] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [downloadedTracks, setDownloadedTracks] = useState<any[]>(mySongsCache || []);
   const [loadingPlaylists, setLoadingPlaylists] = useState(true);
   const [loadingRecent, setLoadingRecent] = useState(true);
   const [loadingRecs, setLoadingRecs] = useState(true);
+  const [loadingDownloads, setLoadingDownloads] = useState(mySongsCache === null);
 
   useEffect(() => {
     fetch("/api/playlists")
@@ -47,7 +49,17 @@ export default function DashboardPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingRecs(false));
-  }, []);
+
+    if (mySongsCache !== null) {
+      setDownloadedTracks(mySongsCache);
+      setLoadingDownloads(false);
+    } else {
+      refreshMySongsCache().then((data) => {
+        setDownloadedTracks(data || []);
+        setLoadingDownloads(false);
+      });
+    }
+  }, [mySongsCache, refreshMySongsCache]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -74,6 +86,16 @@ export default function DashboardPage() {
       album: track.album?.name,
     });
   };
+
+  const normalizedDownloads = downloadedTracks.map((s) => ({
+    id: s.spotify_id || s.id,
+    name: s.title,
+    artists: [{ name: s.artist }],
+    album: { name: s.album || "Unknown", images: [{ url: s.cover_url }, { url: s.cover_url }, { url: s.cover_url }] },
+    duration_ms: s.duration_ms || 0,
+    cover_url: s.cover_url,
+    storage_path: s.storage_path,
+  }));
 
   // Build quick-access items from playlists + liked songs  
   const quickAccessItems = playlists.slice(0, 8).map((p) => ({
@@ -183,6 +205,60 @@ export default function DashboardPage() {
             </div>
           ) : (
             <p className="text-neutral-500 text-sm">Play some music to see your history here.</p>
+          )}
+        </section>
+
+        {/* Downloaded Songs — Mobile Only horizontal scroll */}
+        <section className="block md:hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold hover:underline cursor-pointer">Downloaded Songs</h2>
+            <Link href="/dashboard/my-songs" className="text-xs font-bold text-neutral-400 hover:text-white cursor-pointer tracking-wide uppercase transition-colors">Show all</Link>
+          </div>
+
+          {loadingDownloads ? (
+            <div className="flex gap-4 overflow-hidden">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex-shrink-0 w-[140px]">
+                  <div className="skeleton w-full aspect-square rounded-lg mb-3" />
+                  <div className="skeleton h-3.5 w-3/4 mb-2" />
+                  <div className="skeleton h-3 w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : normalizedDownloads.length > 0 ? (
+            <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-scroll" style={{ scrollbarWidth: 'none' }}>
+              {normalizedDownloads.map((track, index) => {
+                const isCurrentlyPlaying = currentTrack?.id === track.id && isPlaying;
+                return (
+                  <div
+                    key={`${track.id}-${index}`}
+                    className="flex-shrink-0 w-[140px] bg-neutral-900/40 hover:bg-neutral-800 p-3 rounded-lg transition-all cursor-pointer group"
+                    onClick={() => handlePlayTrack(track)}
+                  >
+                    <div className="relative mb-3 rounded-md overflow-hidden shadow-lg">
+                      <img
+                        src={track.cover_url || "/placeholder.svg"}
+                        alt={track.name}
+                        className="w-full aspect-square object-cover"
+                      />
+                      <div className={`absolute bottom-2 right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center shadow-xl transition-all duration-300 ${isCurrentlyPlaying ? 'opacity-100 translate-y-0' : 'opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0'}`}>
+                        <span className="text-black text-xs ml-0.5">
+                          {isCurrentlyPlaying ? "⏸" : "▶"}
+                        </span>
+                      </div>
+                    </div>
+                    <h3 className={`font-bold text-xs truncate mb-1 ${isCurrentlyPlaying ? 'text-green-400' : 'text-white'}`}>
+                      {track.name}
+                    </h3>
+                    <p className="text-[10px] text-neutral-400 truncate">
+                      {track.artists?.map((a: any) => a.name).join(", ")}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-neutral-500 text-sm">No downloaded songs. Start downloading to stream offline!</p>
           )}
         </section>
 
