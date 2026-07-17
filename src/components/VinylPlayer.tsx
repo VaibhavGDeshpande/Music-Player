@@ -23,7 +23,6 @@ export default function VinylPlayer({
   onSeek,
   variant = "wood",
 }: VinylPlayerProps) {
-  const [rotation, setRotation] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragAngle, setDragAngle] = useState<number | null>(null);
   const [dragProgress, setDragProgress] = useState<number | null>(null);
@@ -33,8 +32,6 @@ export default function VinylPlayer({
   const [isParked, setIsParked] = useState(!isPlaying && progress === 0);
   const [isResetting, setIsResetting] = useState(false);
 
-  const requestRef = useRef<number | null>(null);
-  const previousTimeRef = useRef<number | null>(null);
   const pivotRef = useRef<SVGCircleElement | null>(null);
   const previousTrackRef = useRef<string>(trackTitle);
 
@@ -62,26 +59,6 @@ export default function VinylPlayer({
       return () => clearTimeout(timer);
     }
   }, [trackTitle]);
-
-  // Smooth rotation
-  useEffect(() => {
-    const animate = (time: number) => {
-      if (previousTimeRef.current !== null) {
-        const deltaTime = time - previousTimeRef.current;
-        // Spin speed: 33.3 RPM -> approx 0.2deg per ms
-        if (isPlaying) {
-          setRotation((prev) => (prev + deltaTime * 0.2) % 360);
-        }
-      }
-      previousTimeRef.current = time;
-      requestRef.current = requestAnimationFrame(animate);
-    };
-
-    requestRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-  }, [isPlaying]);
 
   // Handle Drag / Pointer events
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -184,40 +161,42 @@ export default function VinylPlayer({
           className="absolute rounded-full bg-[#0a0a0b] shadow-[0_30px_60px_rgba(0,0,0,0.8),0_0_20px_rgba(0,0,0,0.5)] cursor-pointer group/vinyl overflow-hidden active:scale-[0.995] transition-transform duration-100"
           style={{ width: '110%', height: '110%', left: '-15%', top: '-5%' }}
         >
-          {/* Vinyl Grooves */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-30" viewBox="0 0 200 200">
-            <circle cx="100" cy="100" r="95" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="90" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
-            <circle cx="100" cy="100" r="85" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="80" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
-            <circle cx="100" cy="100" r="75" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="70" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
-            <circle cx="100" cy="100" r="65" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="60" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
-            <circle cx="100" cy="100" r="55" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="48" fill="none" stroke="#111" strokeWidth="1.5" />
-          </svg>
-
-          {/* Vinyl Sheen/Reflection Overlay */}
-          <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-[0.12] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_30deg,transparent_60deg,transparent_180deg,rgba(255,255,255,0.4)_210deg,transparent_240deg)]" />
-
-          {/* Center Label (Sticker) and Album Art */}
-          <div
-            className="absolute inset-0 w-full h-full flex items-center justify-center motion-safe:transition-transform duration-100"
-            style={{ transform: `rotate(${rotation}deg)` }}
+          {/* SPINNING CONTENT (Grooves and Label) */}
+          <div 
+            className="absolute inset-0 w-full h-full animate-spin"
+            style={{ animationDuration: '1.8s', animationTimingFunction: 'linear', animationPlayState: isPlaying ? 'running' : 'paused' }}
           >
-            {/* 36% of 110% = 39.6% radius. That's R=19.8, which perfectly matches R=20 in our math! */}
-            <div className="w-[36%] aspect-square rounded-full border-4 border-[#0a0a0b] flex items-center justify-center overflow-hidden relative shadow-inner">
-              <img
-                src={albumArt || "/placeholder.svg"}
-                alt=""
-                className="w-full h-full object-cover rounded-full"
-                draggable={false}
-              />
-              {/* Spindle hole */}
-              <div className="absolute w-2 h-2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.2)] border border-[#222]" />
+            {/* Vinyl Grooves */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-30" viewBox="0 0 200 200">
+              <circle cx="100" cy="100" r="95" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="90" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
+              <circle cx="100" cy="100" r="85" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="80" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
+              <circle cx="100" cy="100" r="75" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="70" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
+              <circle cx="100" cy="100" r="65" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="60" fill="none" stroke="#2a2a2a" strokeWidth="0.3" />
+              <circle cx="100" cy="100" r="55" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="48" fill="none" stroke="#111" strokeWidth="1.5" />
+            </svg>
+
+            {/* Center Label (Sticker) and Album Art */}
+            <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+              <div className="w-[36%] aspect-square rounded-full border-4 border-[#0a0a0b] flex items-center justify-center overflow-hidden relative shadow-inner">
+                <img
+                  src={albumArt || "/placeholder.svg"}
+                  alt=""
+                  className="w-full h-full object-cover rounded-full"
+                  draggable={false}
+                />
+                {/* Spindle hole */}
+                <div className="absolute w-2 h-2 rounded-full bg-black shadow-[inset_0_1px_2px_rgba(255,255,255,0.2)] border border-[#222]" />
+              </div>
             </div>
           </div>
+
+          {/* STATIC Vinyl Sheen/Reflection Overlay */}
+          <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-[0.12] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_30deg,transparent_60deg,transparent_180deg,rgba(255,255,255,0.4)_210deg,transparent_240deg)]" />
         </div>
 
         {/* FIXED TONEARM BASE PADS */}
@@ -234,15 +213,12 @@ export default function VinylPlayer({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            className={`w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing transition-transform duration-800 motion-reduce:transition-none ${
-              isDragging ? "transition-none duration-0" : ""
+            className={`w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing ${
+              isDragging ? "transition-none" : "transition-transform duration-1000 ease-out"
             }`}
             style={{
               transformOrigin: "88% 22%",
               transform: `rotate(${tonearmRotation}deg)`,
-              transitionTimingFunction: (isPlaying && !isParked) && !isDragging
-                ? "cubic-bezier(0.34, 1.56, 0.64, 1)"
-                : "cubic-bezier(0.25, 1, 0.5, 1)",
             }}
           >
             <svg
@@ -337,23 +313,31 @@ export default function VinylPlayer({
           className="absolute rounded-full bg-[#0d0d0d] shadow-[0_10px_25px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] border border-black cursor-pointer group/vinyl active:scale-[0.99] transition-transform overflow-hidden"
           style={{ width: '76%', height: '76%', left: '12%', top: '12%' }}
         >
-          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 200 200">
-            <circle cx="100" cy="100" r="95" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="85" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="75" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="65" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="55" fill="none" stroke="#222" strokeWidth="0.5" />
-            <circle cx="100" cy="100" r="44" fill="none" stroke="#111" strokeWidth="2" />
-          </svg>
-          <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-[0.14] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_30deg,transparent_60deg,transparent_180deg,rgba(255,255,255,0.4)_210deg,transparent_240deg)]" />
-          <div className="absolute inset-0 w-full h-full flex items-center justify-center motion-safe:transition-transform duration-100" style={{ transform: `rotate(${rotation}deg)` }}>
-            <div className="w-[38%] aspect-square rounded-full bg-neutral-900 border-4 border-[#121212] shadow-md flex items-center justify-center overflow-hidden relative">
-              <img src={albumArt || "/placeholder.svg"} alt="" className="w-full h-full object-cover rounded-full" draggable={false} />
-              <div className="absolute w-3 h-3 rounded-full bg-neutral-950 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] border border-neutral-700/50 flex items-center justify-center">
-                <div className="w-1.5 h-1.5 rounded-full bg-neutral-800" />
+          {/* SPINNING CONTENT */}
+          <div 
+            className="absolute inset-0 w-full h-full animate-spin"
+            style={{ animationDuration: '1.8s', animationTimingFunction: 'linear', animationPlayState: isPlaying ? 'running' : 'paused' }}
+          >
+            <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 200 200">
+              <circle cx="100" cy="100" r="95" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="85" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="75" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="65" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="55" fill="none" stroke="#222" strokeWidth="0.5" />
+              <circle cx="100" cy="100" r="44" fill="none" stroke="#111" strokeWidth="2" />
+            </svg>
+            <div className="absolute inset-0 w-full h-full flex items-center justify-center">
+              <div className="w-[38%] aspect-square rounded-full bg-neutral-900 border-4 border-[#121212] shadow-md flex items-center justify-center overflow-hidden relative">
+                <img src={albumArt || "/placeholder.svg"} alt="" className="w-full h-full object-cover rounded-full" draggable={false} />
+                <div className="absolute w-3 h-3 rounded-full bg-neutral-950 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] border border-neutral-700/50 flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-neutral-800" />
+                </div>
               </div>
             </div>
           </div>
+          
+          {/* STATIC OVERLAY */}
+          <div className="absolute inset-0 pointer-events-none mix-blend-screen opacity-[0.14] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.4)_30deg,transparent_60deg,transparent_180deg,rgba(255,255,255,0.4)_210deg,transparent_240deg)]" />
         </div>
 
         {/* WOOD TONEARM ASSEMBLY */}
@@ -362,15 +346,12 @@ export default function VinylPlayer({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            className={`w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing transition-transform duration-800 motion-reduce:transition-none ${
-              isDragging ? "transition-none duration-0" : ""
+            className={`w-full h-full pointer-events-auto cursor-grab active:cursor-grabbing ${
+              isDragging ? "transition-none" : "transition-transform duration-1000 ease-out"
             }`}
             style={{
               transformOrigin: "85% 15%",
               transform: `rotate(${tonearmRotation}deg)`,
-              transitionTimingFunction: (isPlaying && !isParked) && !isDragging
-                ? "cubic-bezier(0.34, 1.56, 0.64, 1)"
-                : "cubic-bezier(0.25, 1, 0.5, 1)",
             }}
           >
             <svg
