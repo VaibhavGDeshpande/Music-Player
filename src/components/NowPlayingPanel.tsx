@@ -3,6 +3,7 @@
 import { usePlayer } from "@/contexts/PlayerContext";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import VinylPlayer from "./VinylPlayer";
 
 export default function NowPlayingPanel() {
   const {
@@ -17,9 +18,15 @@ export default function NowPlayingPanel() {
     toggleLikeSong,
     isPlaying,
     togglePlay,
+    currentTime,
+    duration,
+    seek,
   } = usePlayer();
 
   const [isVideoMode, setIsVideoMode] = useState(false);
+  const [isVinylMode, setIsVinylMode] = useState(true);
+
+  const progress = duration > 0 ? currentTime / duration : 0;
   const [showFullQueue, setShowFullQueue] = useState(false);
 
   useEffect(() => {
@@ -86,24 +93,67 @@ export default function NowPlayingPanel() {
 
           <div className="rounded-lg overflow-hidden shadow-2xl relative group bg-black aspect-square">
             {!isVideoMode ? (
-              <>
-                <img
-                  src={currentTrack.cover || "/placeholder.svg"}
-                  alt={currentTrack.title}
-                  className="w-full aspect-square object-cover"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center pointer-events-none">
+              isVinylMode ? (
+                <div className="w-full h-full relative">
+                  <VinylPlayer
+                    isPlaying={isPlaying}
+                    albumArt={currentTrack.cover || "/placeholder.svg"}
+                    trackTitle={currentTrack.title}
+                    artist={currentTrack.artist}
+                    progress={progress}
+                    onToggle={togglePlay}
+                    onSeek={(p) => seek(p * duration)}
+                  />
+                  {/* Toggle Button for Vinyl vs Album Cover */}
                   <button
-                    onClick={() => setIsVideoMode(true)}
-                    className="bg-red-600 hover:bg-red-700 text-white rounded-full p-4 shadow-xl transform hover:scale-110 transition-all pointer-events-auto flex items-center justify-center cursor-pointer"
-                    title="Watch Video"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsVinylMode(false);
+                    }}
+                    className="absolute bottom-4 right-4 z-30 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white border border-neutral-700/50 shadow-md backdrop-blur-sm transition-transform active:scale-95 pointer-events-auto"
+                    title="Show Album Cover"
                   >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M21.582,6.186c-0.23-0.86-0.908-1.538-1.768-1.768C18.254,4,12,4,12,4S5.746,4,4.186,4.418 c-0.86,0.23-1.538,0.908-1.768,1.768C2,7.746,2,12,2,12s0,4.254,0.418,5.814c0.23,0.86,0.908,1.538,1.768,1.768 C5.746,20,12,20,12,20s6.254,0,7.814-0.418c0.86-0.23,1.538-0.908,1.768-1.768C22,16.254,22,12,22,12S22,7.746,21.582,6.186z M9.996,15.005l0-6.01l5.518,3.005L9.996,15.005z" />
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
                     </svg>
                   </button>
                 </div>
-              </>
+              ) : (
+                <>
+                  <img
+                    src={currentTrack.cover || "/placeholder.svg"}
+                    alt={currentTrack.title}
+                    className="w-full aspect-square object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center pointer-events-none">
+                    <button
+                      onClick={() => setIsVideoMode(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white rounded-full p-4 shadow-xl transform hover:scale-110 transition-all pointer-events-auto flex items-center justify-center cursor-pointer"
+                      title="Watch Video"
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M21.582,6.186c-0.23-0.86-0.908-1.538-1.768-1.768C18.254,4,12,4,12,4S5.746,4,4.186,4.418 c-0.86,0.23-1.538,0.908-1.768,1.768C2,7.746,2,12,2,12s0,4.254,0.418,5.814c0.23,0.86,0.908,1.538,1.768,1.768 C5.746,20,12,20,12,20s6.254,0,7.814-0.418c0.86-0.23,1.538-0.908,1.768-1.768C22,16.254,22,12,22,12S22,7.746,21.582,6.186z M9.996,15.005l0-6.01l5.518,3.005L9.996,15.005z" />
+                      </svg>
+                    </button>
+                  </div>
+                  {/* Toggle Button for Vinyl vs Album Cover */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsVinylMode(true);
+                    }}
+                    className="absolute bottom-4 right-4 z-30 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white border border-neutral-700/50 shadow-md backdrop-blur-sm transition-transform active:scale-95 pointer-events-auto"
+                    title="Show Vinyl Turntable"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                </>
+              )
             ) : (
               <iframe
                 key={currentTrack.id}

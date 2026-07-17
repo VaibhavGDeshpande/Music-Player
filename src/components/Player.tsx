@@ -2,6 +2,7 @@
 
 import { usePlayer } from "@/contexts/PlayerContext";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import VinylPlayer from "./VinylPlayer";
 
 type LyricLine = {
   startTimeMs: string;
@@ -43,6 +44,7 @@ export default function Player() {
   const [showBigPlayer, setShowBigPlayer] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [showLyrics, setShowLyrics] = useState(false);
+  const [isVinylMode, setIsVinylMode] = useState(true);
   const [showMobileQueue, setShowMobileQueue] = useState(false);
   const [lyrics, setLyrics] = useState<LyricLine[]>([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -296,39 +298,152 @@ export default function Player() {
       </div>
 
       {showBigPlayer && (
-        <div className="md:hidden fixed inset-0 z-[100] flex flex-col bg-gradient-to-b from-neutral-800 via-neutral-900 to-black animate-slideUp">
-          {/* Top bar */}
-          <div className="flex items-center justify-between px-6 pt-4 pb-2">
-            <button
-              onClick={() => { setShowBigPlayer(false); setShowLyrics(false); setShowMobileQueue(false); }}
-              className="text-white text-2xl p-2 -ml-2 active:scale-90 transition"
-              aria-label="Close"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </button>
-            <div className="text-center flex-1">
-              <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold">
-                Playing from your library
-              </p>
-              <p className="text-xs text-white font-semibold mt-0.5">
-                Now Playing
-              </p>
-            </div>
-            {/* Network Quality Badge */}
-            <div className="w-10 flex justify-end">
-              {networkQuality === "slow" && (
-                <span className="text-[9px] font-bold text-yellow-400 bg-yellow-400/15 px-1.5 py-0.5 rounded-full">SLOW</span>
-              )}
-              {networkQuality === "offline" && (
-                <span className="text-[9px] font-bold text-red-400 bg-red-400/15 px-1.5 py-0.5 rounded-full">OFFLINE</span>
-              )}
-            </div>
-          </div>
+        <div
+          className={`md:hidden fixed inset-0 z-[100] flex flex-col transition-colors duration-500 animate-slideUp ${
+            isVinylMode && !showLyrics && !showMobileQueue
+              ? "bg-[#1e1e1f]"
+              : "bg-gradient-to-b from-neutral-800 via-neutral-900 to-black"
+          }`}
+        >
+          {isVinylMode && !showLyrics && !showMobileQueue ? (
+            <>
+              {/* Minimal Top bar */}
+              <div className="flex items-center justify-between px-6 pt-4 pb-2 z-10">
+                <button
+                  onClick={() => { setShowBigPlayer(false); }}
+                  className="text-neutral-400 text-2xl p-2 -ml-2 active:scale-90 transition hover:text-white"
+                  aria-label="Close"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                {/* Vinyl Toggle on top right */}
+                <button
+                  onClick={() => setIsVinylMode(false)}
+                  className="text-neutral-400 p-2 rounded-full active:scale-90 transition hover:text-white flex items-center gap-1.5"
+                  title="Show Standard View"
+                >
+                  <span className="text-[10px] font-mono tracking-wider font-bold">STD</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                </button>
+              </div>
 
-          {/* Main content — toggles between album art and lyrics */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Platter & Disc Graphic */}
+              <div className="flex-1 min-h-[320px] flex items-center justify-center relative overflow-hidden">
+                <VinylPlayer
+                  isPlaying={isPlaying}
+                  albumArt={currentTrack.cover || "/placeholder.svg"}
+                  trackTitle={currentTrack.title}
+                  artist={currentTrack.artist}
+                  progress={duration > 0 ? currentTime / duration : 0}
+                  onToggle={togglePlay}
+                  onSeek={(p) => seek(p * duration)}
+                  variant="minimal"
+                />
+              </div>
+
+              {/* Title & Artist - Left Aligned */}
+              <div className="px-8 mt-2 mb-8 flex flex-col items-start">
+                <h2 className="text-3xl font-extrabold text-neutral-100 truncate tracking-tight w-full">{currentTrack.title}</h2>
+                <p className="text-lg text-neutral-400 mt-1 truncate font-medium w-full">{currentTrack.artist}</p>
+              </div>
+
+              {/* MD Vinyl style Controls - Play left, Prev/Next right */}
+              <div className="flex items-center justify-between px-8 pb-12 mt-auto">
+                {/* PLAY Button */}
+                <div className="flex flex-col items-center">
+                  <button
+                    onClick={togglePlay}
+                    className="w-[72px] h-10 rounded-[20px] bg-[#1a1a1b] shadow-[inset_0_-2px_5px_rgba(0,0,0,0.6),0_4px_8px_rgba(0,0,0,0.5)] border border-[#2a2a2c] flex items-center justify-center active:scale-95 transition-all"
+                  >
+                     <div className={`w-14 h-6 rounded-full border border-[#111] shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center transition-colors ${isPlaying ? 'bg-amber-500/20 border-amber-500/30' : 'bg-[#151515]'}`} />
+                  </button>
+                  <span className="text-[9px] font-bold text-neutral-500 tracking-widest uppercase mt-2">
+                    {isPlaying ? "PAUSE" : "PLAY"}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-5">
+                  {/* PREV Button */}
+                  <div className="flex flex-col items-center">
+                    <button
+                      onClick={prevTrack}
+                      className="w-14 h-8 rounded-[16px] bg-[#1a1a1b] shadow-[inset_0_-2px_4px_rgba(0,0,0,0.6),0_4px_8px_rgba(0,0,0,0.5)] border border-[#2a2a2c] flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                      <div className="w-10 h-4 rounded-full border border-[#111] bg-[#151515] shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]" />
+                    </button>
+                    <span className="text-[10px] font-black text-neutral-500 tracking-tighter mt-2">
+                      |◄
+                    </span>
+                  </div>
+
+                  {/* NEXT Button */}
+                  <div className="flex flex-col items-center">
+                    <button
+                      onClick={nextTrack}
+                      className="w-14 h-8 rounded-[16px] bg-[#1a1a1b] shadow-[inset_0_-2px_4px_rgba(0,0,0,0.6),0_4px_8px_rgba(0,0,0,0.5)] border border-[#2a2a2c] flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                      <div className="w-10 h-4 rounded-full border border-[#111] bg-[#151515] shadow-[inset_0_2px_4px_rgba(0,0,0,0.5)]" />
+                    </button>
+                    <span className="text-[10px] font-black text-neutral-500 tracking-tighter mt-2">
+                      ►|
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Original Top bar */}
+              <div className="flex items-center justify-between px-6 pt-4 pb-2">
+                <button
+                  onClick={() => { setShowBigPlayer(false); setShowLyrics(false); setShowMobileQueue(false); }}
+                  className="text-white text-2xl p-2 -ml-2 active:scale-90 transition"
+                  aria-label="Close"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div className="text-center flex-1">
+                  <p className="text-[10px] text-neutral-400 uppercase tracking-widest font-bold">
+                    Playing from your library
+                  </p>
+                  <p className="text-xs text-white font-semibold mt-0.5">
+                    Now Playing
+                  </p>
+                </div>
+                {/* Network Quality Badge & Vinyl Toggle */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsVinylMode(true)}
+                    className="text-neutral-400 p-2 active:scale-90 transition hover:text-white flex items-center gap-1"
+                    title="Show Vinyl Turntable"
+                  >
+                    <span className="text-[10px] font-mono tracking-wider font-bold">VINYL</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                  <div className="w-10 flex justify-end">
+                    {networkQuality === "slow" && (
+                      <span className="text-[9px] font-bold text-yellow-400 bg-yellow-400/15 px-1.5 py-0.5 rounded-full">SLOW</span>
+                    )}
+                    {networkQuality === "offline" && (
+                      <span className="text-[9px] font-bold text-red-400 bg-red-400/15 px-1.5 py-0.5 rounded-full">OFFLINE</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Main content — toggles between album art and lyrics */}
+              <div className="flex-1 flex flex-col overflow-hidden">
             {showMobileQueue ? (
               <div className="flex-1 overflow-y-auto px-6 pt-2 pb-4">
                 <div className="flex items-center justify-between mb-4">
@@ -398,14 +513,48 @@ export default function Player() {
                 </div>
               </div>
             ) : !showLyrics ? (
-              /* Album Art View */
+              /* Album Art / Vinyl View */
               <div className="flex-1 flex items-center justify-center px-8 pt-4">
-                <div className="w-full max-w-[340px] aspect-square rounded-lg overflow-hidden shadow-2xl">
-                  <img
-                    src={currentTrack.cover || "/placeholder.svg"}
-                    alt={currentTrack.title}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-full max-w-[340px] aspect-square relative rounded-lg overflow-hidden shadow-2xl">
+                  {isVinylMode ? (
+                    <VinylPlayer
+                      isPlaying={isPlaying}
+                      albumArt={currentTrack.cover || "/placeholder.svg"}
+                      trackTitle={currentTrack.title}
+                      artist={currentTrack.artist}
+                      progress={duration > 0 ? currentTime / duration : 0}
+                      onToggle={togglePlay}
+                      onSeek={(p) => seek(p * duration)}
+                    />
+                  ) : (
+                    <img
+                      src={currentTrack.cover || "/placeholder.svg"}
+                      alt={currentTrack.title}
+                      className="w-full h-full object-cover"
+                    />
+                  )}
+                  {/* Toggle Button for Vinyl vs Album Cover */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsVinylMode(!isVinylMode);
+                    }}
+                    className="absolute bottom-4 right-4 z-30 p-2 rounded-full bg-black/60 hover:bg-black/80 text-white border border-neutral-700/50 shadow-md backdrop-blur-sm transition-transform active:scale-95 pointer-events-auto"
+                    title={isVinylMode ? "Show Album Cover" : "Show Vinyl Turntable"}
+                  >
+                    {isVinylMode ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <polyline points="21 15 16 10 5 21" />
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
                 </div>
               </div>
             ) : (
@@ -644,8 +793,10 @@ export default function Player() {
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
+    </div>
+  )}
 
       {/* ============================================
            DESKTOP PLAYER (bottom bar)
