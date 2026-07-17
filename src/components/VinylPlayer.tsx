@@ -31,6 +31,9 @@ export default function VinylPlayer({
   // Track if the arm is currently parked off the record
   const [isParked, setIsParked] = useState(!isPlaying && progress === 0);
   const [isResetting, setIsResetting] = useState(false);
+  
+  const [displayedArt, setDisplayedArt] = useState(albumArt);
+  const [isSwapping, setIsSwapping] = useState(false);
 
   const pivotRef = useRef<SVGCircleElement | null>(null);
   const previousTrackRef = useRef<string>(trackTitle);
@@ -43,22 +46,37 @@ export default function VinylPlayer({
     }
   }, [isPlaying, isParked, isResetting]);
 
-  // When a new song starts, physically reset the needle to the dock first!
+  // When a new song starts, do a full physical record swap sequence!
   useEffect(() => {
     if (previousTrackRef.current !== trackTitle) {
       previousTrackRef.current = trackTitle;
       
-      setIsParked(true);
+      setIsParked(true); // 1. Park the needle
       setIsResetting(true);
       
-      // Wait for the arm to swing back to the rest position before dropping it on the new track
-      const timer = setTimeout(() => {
-        setIsResetting(false);
-      }, 800);
+      // 2. Wait 400ms for needle to clear the record, then lift the old record off
+      const slideOutTimer = setTimeout(() => {
+        setIsSwapping(true);
+      }, 400);
       
-      return () => clearTimeout(timer);
+      // 3. At 900ms (record is offscreen), swap the art and drop the new record in
+      const swapArtTimer = setTimeout(() => {
+        setDisplayedArt(albumArt);
+        setIsSwapping(false);
+      }, 900);
+      
+      // 4. At 1400ms (new record is fully seated), drop the needle back on
+      const armInTimer = setTimeout(() => {
+        setIsResetting(false);
+      }, 1400);
+      
+      return () => {
+        clearTimeout(slideOutTimer);
+        clearTimeout(swapArtTimer);
+        clearTimeout(armInTimer);
+      };
     }
-  }, [trackTitle]);
+  }, [trackTitle, albumArt]);
 
   // Handle Drag / Pointer events
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -158,7 +176,9 @@ export default function VinylPlayer({
         {/* VINYL DISC (No base platter, just the record) */}
         <div
           onClick={onToggle}
-          className="absolute rounded-full bg-[#0a0a0b] shadow-[0_30px_60px_rgba(0,0,0,0.8),0_0_20px_rgba(0,0,0,0.5)] cursor-pointer group/vinyl overflow-hidden active:scale-[0.995] transition-transform duration-100"
+          className={`absolute rounded-full bg-[#0a0a0b] shadow-[0_30px_60px_rgba(0,0,0,0.8),0_0_20px_rgba(0,0,0,0.5)] cursor-pointer group/vinyl overflow-hidden active:scale-[0.995] transition-all duration-500 ease-in-out ${
+            isSwapping ? "-translate-y-[30%] -translate-x-[20%] scale-75 opacity-0" : "translate-y-0 translate-x-0 scale-100 opacity-100"
+          }`}
           style={{ width: '110%', height: '110%', left: '-15%', top: '-5%' }}
         >
           {/* SPINNING CONTENT (Grooves and Label) */}
@@ -184,7 +204,7 @@ export default function VinylPlayer({
             <div className="absolute inset-0 w-full h-full flex items-center justify-center">
               <div className="w-[36%] aspect-square rounded-full border-4 border-[#0a0a0b] flex items-center justify-center overflow-hidden relative shadow-inner">
                 <img
-                  src={albumArt || "/placeholder.svg"}
+                  src={displayedArt || "/placeholder.svg"}
                   alt=""
                   className="w-full h-full object-cover rounded-full"
                   draggable={false}
@@ -310,7 +330,9 @@ export default function VinylPlayer({
         {/* VINYL DISC */}
         <div
           onClick={onToggle}
-          className="absolute rounded-full bg-[#0d0d0d] shadow-[0_10px_25px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] border border-black cursor-pointer group/vinyl active:scale-[0.99] transition-transform overflow-hidden"
+          className={`absolute rounded-full bg-[#0d0d0d] shadow-[0_10px_25px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.1)] border border-black cursor-pointer group/vinyl active:scale-[0.99] transition-all duration-500 ease-in-out overflow-hidden ${
+            isSwapping ? "-translate-y-[30%] -translate-x-[20%] scale-75 opacity-0" : "translate-y-0 translate-x-0 scale-100 opacity-100"
+          }`}
           style={{ width: '76%', height: '76%', left: '12%', top: '12%' }}
         >
           {/* SPINNING CONTENT */}
@@ -328,7 +350,7 @@ export default function VinylPlayer({
             </svg>
             <div className="absolute inset-0 w-full h-full flex items-center justify-center">
               <div className="w-[38%] aspect-square rounded-full bg-neutral-900 border-4 border-[#121212] shadow-md flex items-center justify-center overflow-hidden relative">
-                <img src={albumArt || "/placeholder.svg"} alt="" className="w-full h-full object-cover rounded-full" draggable={false} />
+                <img src={displayedArt || "/placeholder.svg"} alt="" className="w-full h-full object-cover rounded-full" draggable={false} />
                 <div className="absolute w-3 h-3 rounded-full bg-neutral-950 shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] border border-neutral-700/50 flex items-center justify-center">
                   <div className="w-1.5 h-1.5 rounded-full bg-neutral-800" />
                 </div>
